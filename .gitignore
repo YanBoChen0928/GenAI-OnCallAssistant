@@ -1,1 +1,10 @@
 dataset/
+
+#virtual environment
+genAIvenv/
+.final_project_env/
+
+
+.DS_Store   
+
+docs/
