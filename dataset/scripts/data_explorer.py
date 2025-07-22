@@ -7,65 +7,79 @@ from pathlib import Path
 import json
 
 def analyze_subset(file_path, keywords_path, output_dir="analysis"):
-    """分析子集數據質量和分布"""
+    """Analyze subset data quality and distribution"""
     print(f"\n{'='*50}")
-    print(f"開始分析數據集: {file_path}")
-    print(f"使用關鍵詞文件: {keywords_path}")
-    print(f"輸出目錄: {output_dir}")
+    print(f"Starting dataset analysis: {file_path}")
+    print(f"Using keywords file: {keywords_path}")
+    print(f"Output directory: {output_dir}")
     print(f"{'='*50}\n")
     
-    # 載入數據
-    print("1️⃣ 載入數據...")
+    # Load data
+    print("1️⃣ Loading data...")
     df = pd.read_csv(file_path)
     output_dir = Path(output_dir)
     
-    # 1. 基本統計
-    print("\n2️⃣ 計算基本統計...")
-    print(f"總記錄數: {len(df)}")
+    # 1. Basic statistics
+    print("\n2️⃣ Calculating basic statistics...")
+    total = len(df)
     df['text_length'] = df['clean_text'].str.len()
-    print(f"平均文本長度: {df['text_length'].mean():.2f}")
+    avg_len = df['text_length'].mean()
+    print(f"Total records: {total}")
+    print(f"Average text length: {avg_len:.2f}")
     
-    # 2. 關鍵字分析
-    print("\n3️⃣ 進行關鍵字分析...")
+    # Initialize statistics dictionary with native Python types
+    stats = {
+        'basic_statistics': {
+            'total_records': int(total),
+            'avg_length': float(avg_len)
+        },
+        'keyword_statistics': {}
+    }
+    
+    # 2. Keyword analysis
+    print("\n3️⃣ Performing keyword analysis...")
     with open(keywords_path, 'r') as f:
         keywords = [line.strip() for line in f if line.strip()]
-    print(f"載入了 {len(keywords)} 個關鍵字")
+    print(f"Loaded {len(keywords)} keywords")
     
-    keyword_stats = {}
+    # Count keywords and store in stats
     for keyword in keywords:
-        count = df['clean_text'].str.contains(keyword, case=False).sum()
-        keyword_stats[keyword] = count
-        print(f"  - {keyword}: {count} 條記錄")
+        cnt = df['clean_text'].str.contains(keyword, case=False).sum()
+        stats['keyword_statistics'][keyword] = int(cnt)
+        print(f"  - {keyword}: {cnt} records")
     
-    # 3. 可視化
-    print("\n4️⃣ 生成可視化...")
+    # 3. Visualization
+    print("\n4️⃣ Generating visualizations...")
     output_path = Path(output_dir) / "plots"
     output_path.mkdir(parents=True, exist_ok=True)
-    print(f"圖表將保存在: {output_path}")
+    print(f"Charts will be saved in: {output_path}")
     
-    # 3.1 關鍵詞分布圖
-    print("  - 生成關鍵詞分布圖...")
+    # 3.1 Keyword distribution chart
+    print("  - Generating keyword distribution chart...")
     plt.figure(figsize=(15, 8))
-    plt.bar(keyword_stats.keys(), keyword_stats.values())
+    plt.bar(stats['keyword_statistics'].keys(), stats['keyword_statistics'].values())
     plt.xticks(rotation=45, ha='right')
-    plt.title('關鍵詞匹配分布')
-    plt.xlabel('關鍵詞')
-    plt.ylabel('匹配數量')
+    # TODO: change the title to the name of the subset
+    plt.title('Keyword Distribution for Emergency Subset')
+    plt.xlabel('Keywords')
+    plt.ylabel('Match Count')
+    # TODO: change the name of the file to the name of the subset
     plt.savefig(output_path / "keyword_distribution_emergency_subset.png", bbox_inches='tight')
     plt.close()
     
-    # 3.2 文本長度分布
-    print("  - 生成文本長度分布圖...")
+    # 3.2 Text length distribution
+    print("  - Generating text length distribution...")
     plt.figure(figsize=(10, 6))
     df['text_length'].hist(bins=50)
-    plt.title('文本長度分布')
-    plt.xlabel('文本長度')
-    plt.ylabel('頻率')
-    plt.savefig(output_path / "text_length_dist.png", bbox_inches='tight')
+    plt.title('Text Length Distribution')
+    plt.xlabel('Text Length')
+    plt.ylabel('Frequency')
+    # TODO: change the name of the file to the name of the subset
+    plt.savefig(output_path / "text_length_dist_emergency_subset.png", bbox_inches='tight')
     plt.close()
     
-    # 3.3 關鍵詞共現分析
-    print("  - 生成關鍵詞共現熱力圖...")
+    # 3.3 Keyword co-occurrence analysis
+    print("  - Generating keyword co-occurrence heatmap...")
     cooccurrence_matrix = np.zeros((len(keywords), len(keywords)))
     for text in df['clean_text']:
         present_keywords = [k for k in keywords if k.lower() in text.lower()]
@@ -79,40 +93,31 @@ def analyze_subset(file_path, keywords_path, output_dir="analysis"):
                 xticklabels=keywords, 
                 yticklabels=keywords,
                 cmap='YlOrRd')
-    plt.title('關鍵詞共現熱力圖')
+    plt.title('Keyword Co-occurrence Heatmap')
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
     # TODO: change the name of the file to the name of the subset
     plt.savefig(output_path / "keyword_cooccurrence_emergency_subset.png", bbox_inches='tight')
     plt.close()
     
-    # 4. 保存統計數據
-    print("\n5️⃣ 保存統計數據...")
+    # 4. Save statistics
+    print("\n5️⃣ Saving statistics...")
     stats_path = Path(output_dir) / "stats"
     stats_path.mkdir(parents=True, exist_ok=True)
-    
-    stats = {
-        '基本統計': {
-            '總記錄數': len(df),
-            '平均文本長度': float(df['text_length'].mean()),
-            '文本長度分位數': df['text_length'].describe().to_dict()
-        },
-        '關鍵詞統計': keyword_stats
-    }
-    
     # TODO: change the name of the file to the name of the subset
     stats_file = stats_path / "analysis_stats_emergency_subset.json"
+    
     with open(stats_file, 'w', encoding='utf-8') as f:
         json.dump(stats, f, indent=2, ensure_ascii=False)
-    print(f"統計數據已保存到: {stats_file}")
+    print(f"Statistics saved to: {stats_file}")
     
-    print(f"\n✅ 分析完成！所有結果已保存到 {output_dir} 目錄")
+    print(f"\n✅ Analysis complete! All results saved to {output_dir} directory")
 
 if __name__ == "__main__":
-    # 設定文件路徑
+    # Set file paths
     emergency_subset = "../dataset/emergency/emergency_subset.csv"
     emergency_keywords = "../keywords/emergency_keywords.txt"
     output_dir = "../analysis"
     
-    # 執行分析
+    # Run analysis
     analyze_subset(emergency_subset, emergency_keywords, output_dir)

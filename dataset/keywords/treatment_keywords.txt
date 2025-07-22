@@ -111,3 +111,8 @@ Norepinephrine
 Epinephrine
 Bosmin
 Adrenaline
+Insulin
+nitroglycerin
+NTG
+beta blocker
+alpha blocker

@@ -2,13 +2,14 @@ Acute abdomen
 Acute bleeding
 Acute Coronary Syndrome
 Acute Kidney Injury
-Acute pancréatitis
+Acute pancreatitis
 Acute respiratory distress syndrome
 Acute stroke
 Anaphylaxis
 Anaphylactic Shock
 Arrhythmia
 Atrial fibrillation
+Atrial flutter
 Bradycardia
 Cardiac arrest
 Cardiogenic Shock
@@ -34,7 +35,7 @@ Pulmonary Embolism
 Respiratory distress
 Respiratory failure
 Sepsis
-Sepsis, Severe
+Severe Sepsis
 Septic Shock
 Shock
 Status Epilepticus
@@ -43,3 +44,4 @@ Tachycardia
 Tachypnea
 Traumatic Brain Injury
 Ventricular Tachycardia
+Ventricular fibrillation
