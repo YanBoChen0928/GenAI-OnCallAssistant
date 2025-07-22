@@ -23,7 +23,7 @@ print("2️⃣ Loading emergency keywords and matching...")
 keywords = load_keywords("../keywords/emergency_keywords.txt")
 pattern = r"\b(?:" + "|".join(keywords) + r")\b"  # Using non-capturing groups (?:...)
 
-# Match keywords
+# Match keywords and add metadata columns
 df["matched"] = (
     df["clean_text"]
       .fillna("")  # Convert NaN to empty string
@@ -31,9 +31,13 @@ df["matched"] = (
       .apply(lambda lst: "|".join(lst) if lst else "")
 )
 df["has_emergency"] = df["matched"].str.len() > 0
-cnt_em = df["has_emergency"].sum()
 
-# Calculate average matches (with escape)
+# Add metadata columns for future use
+df["type"] = "emergency"  # Document type identifier
+df["condition"] = ""      # Reserved for future condition mapping
+
+# Calculate average matches
+cnt_em = df["has_emergency"].sum()
 avg_matches = (
     df[df["has_emergency"]]["matched"]
       .str.count(r"\|")  # Escape the pipe
