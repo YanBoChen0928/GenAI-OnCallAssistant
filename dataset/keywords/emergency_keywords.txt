@@ -15,7 +15,8 @@ Cardiogenic Shock
 Chest pain
 Dyspnea
 Fever
-Gastrointestinal Hemorrhage (GI bleeding)
+Gastrointestinal Hemorrhage 
+GI bleeding
 Hemorrhage
 Hemorrhagic stroke
 Hyperthermia
