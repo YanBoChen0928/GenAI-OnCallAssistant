@@ -1,11 +1,9 @@
 iv fluids
 Infusion Intravenous
 fluid resuscitation
-Infusion Intravenous
+Intravenous Infusion 
 normal saline
-Infusion Intravenous
 crystalloids
-Infusion Intravenous
 vasopressors
 Vasoconstrictor Agents
 Epinephrine
@@ -15,7 +13,7 @@ Morphine
 Lidocaine
 Airway Management
 intubation
-Intubation Intratracheal
+Intratracheal Intubation 
 ventilation support
 Ventilators
 oxygen therapy
@@ -43,6 +41,7 @@ Hemostasis
 wound care
 Wound Management
 Suturing
+Suture
 Tourniquet
 compression dressing
 Wound Dressing
@@ -50,9 +49,10 @@ splinting
 Splints
 radiologic imaging
 Radiography
-point-of-care ultrasound
+point of care ultrasound
 POCUS
-Ultrasonography Point-of-Care
+Ultrasonography Point of Care
+ultrasound
 x-ray
 Radiography
 ct scan
