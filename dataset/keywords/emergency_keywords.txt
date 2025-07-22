@@ -1,0 +1,44 @@
+Acute abdomen
+Acute bleeding
+Acute Coronary Syndrome
+Acute Kidney Injury
+Acute pancréatitis
+Acute respiratory distress syndrome
+Acute stroke
+Anaphylaxis
+Anaphylactic Shock
+Arrhythmia
+Atrial fibrillation
+Bradycardia
+Cardiac arrest
+Cardiogenic Shock
+Chest pain
+Dyspnea
+Fever
+Gastrointestinal Hemorrhage (GI bleeding)
+Hemorrhage
+Hemorrhagic stroke
+Hyperthermia
+Hypovolemic Shock
+Hypotension
+Hypothermia
+Internal bleeding
+Intracranial Hemorrhages
+Ischemic stroke
+Loss of consciousness
+Myocardial Infarction
+MI
+Pulmonary Edema
+Pulmonary Embolism
+Respiratory distress
+Respiratory failure
+Sepsis
+Sepsis, Severe
+Septic Shock
+Shock
+Status Epilepticus
+Syncope
+Tachycardia
+Tachypnea
+Traumatic Brain Injury
+Ventricular Tachycardia

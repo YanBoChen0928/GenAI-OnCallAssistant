@@ -1,0 +1,113 @@
+iv fluids
+Infusion Intravenous
+fluid resuscitation
+Infusion Intravenous
+normal saline
+Infusion Intravenous
+crystalloids
+Infusion Intravenous
+vasopressors
+Vasoconstrictor Agents
+Epinephrine
+Ondansetron
+Ibuprofen
+Morphine
+Lidocaine
+Airway Management
+intubation
+Intubation Intratracheal
+ventilation support
+Ventilators
+oxygen therapy
+Oxygen Inhalation Therapy
+cpap
+Continuous Positive Airway Pressure
+bipap
+Bi-level Positive Airway Pressure
+Nebulization
+cpr
+Cardiopulmonary Resuscitation
+ACLS
+Advanced Cardiac Life Support
+Defibrillation
+Cardioversion
+Blood Transfusion
+transfusion
+hemodynamic monitoring
+Hemodynamics
+central line placement
+Catheterization Central Venous
+arterial line placement
+Catheterization Arterial
+Hemostasis
+wound care
+Wound Management
+Suturing
+Tourniquet
+compression dressing
+Wound Dressing
+splinting
+Splints
+radiologic imaging
+Radiography
+point-of-care ultrasound
+POCUS
+Ultrasonography Point-of-Care
+x-ray
+Radiography
+ct scan
+Tomography X-Ray Computed
+laboratory testing
+Laboratory Techniques
+Sedation
+analgesia
+Analgesia
+procedural sedation
+Anesthesia Procedural
+ketamine
+Ketamine
+midazolam
+Midazolam
+supportive care
+Supportive Care
+monitoring
+Patient Monitoring
+vital signs monitoring
+Vital Signs
+icu transfer
+Intensive Care Units
+treatment
+Therapeutics
+manage
+Patient Management
+management
+Patient Management
+intervention
+Therapeutic Intervention
+Therapy
+medication
+Drug Therapy
+procedure
+Surgical Procedures Operative
+resuscitation
+Cardiopulmonary Resuscitation
+administer
+Drug Administration Routes
+dose
+Dosage Forms
+monitor
+Patient Monitoring
+Oxygen
+fluid
+Infusion Intravenous
+surgery
+Surgical Procedures
+antibiotic
+Anti-Bacterial Agents
+Dopamine
+Amiodarone
+levophed
+Norepinephrine
+Epinephrine
+Bosmin
+Adrenaline
