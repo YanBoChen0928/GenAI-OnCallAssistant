@@ -84,11 +84,10 @@ def analyze_treatment_subset(
         stats['treatment_keyword_stats'][keyword] = int(count)
         print(f"   Treatment: {keyword} -> {count} records")
     
-    # Co-occurrence analysis
+    # Step 6: Co-occurrence analysis
     print("\n6️⃣ Computing keyword co-occurrence patterns...")
-    print("   Creating boolean matrices...")
 
-    # Initialize boolean matrices
+    # Initialize matrices for full dataset
     emergency_matrix = np.zeros((len(df), len(emergency_keywords)), dtype=bool)
     treatment_matrix = np.zeros((len(df), len(treatment_keywords)), dtype=bool)
 
@@ -96,35 +95,26 @@ def analyze_treatment_subset(
     print("   Pre-processing text...")
     df['clean_text_lower'] = df['clean_text'].fillna('').str.lower()
 
-    # Fill emergency matrix with progress bar
-    print("   Processing emergency keywords...")
+    # Process all emergency keywords
+    print("\n   Processing all emergency keywords...")
     for i, keyword in enumerate(tqdm(emergency_keywords, desc="Emergency keywords")):
-        pattern = r'\b' + re.escape(keyword) + r'\b'
-        try:
-            emergency_matrix[:, i] = df['clean_text_lower'].str.contains(
-                pattern, 
-                regex=True, 
-                na=False
-            ).values
-        except Exception as e:
-            print(f"   Warning: Error processing keyword '{keyword}': {str(e)}")
+        pattern = r'(?<!\w)' + re.escape(keyword) + r'(?!\w)'
+        emergency_matrix[:, i] = df['clean_text_lower'].str.contains(pattern, regex=True, na=False)
+        matches = emergency_matrix[:, i].sum()
+        print(f"   - {keyword}: {matches} matches")
 
-    # Fill treatment matrix with progress bar
-    print("   Processing treatment keywords...")
+    # Process all treatment keywords
+    print("\n   Processing all treatment keywords...")
     for i, keyword in enumerate(tqdm(treatment_keywords, desc="Treatment keywords")):
-        pattern = r'\b' + re.escape(keyword) + r'\b'
-        try:
-            treatment_matrix[:, i] = df['clean_text_lower'].str.contains(
-                pattern, 
-                regex=True, 
-                na=False
-            ).values
-        except Exception as e:
-            print(f"   Warning: Error processing keyword '{keyword}': {str(e)}")
+        pattern = r'(?<!\w)' + re.escape(keyword) + r'(?!\w)'
+        treatment_matrix[:, i] = df['clean_text_lower'].str.contains(pattern, regex=True, na=False)
+        matches = treatment_matrix[:, i].sum()
+        print(f"   - {keyword}: {matches} matches")
 
-    # Compute co-occurrence using matrix multiplication
-    print("   Computing co-occurrence matrix...")
-    cooc_matrix = emergency_matrix.T @ treatment_matrix
+    # Compute co-occurrence matrix
+    print("\n   Computing co-occurrence matrix...")
+    cooc_matrix = emergency_matrix.astype(int).T @ treatment_matrix.astype(int)
+    print("   Computation completed successfully")
 
     # Extract results
     print("   Extracting co-occurrence pairs...")
@@ -137,7 +127,7 @@ def analyze_treatment_subset(
                     'emergency_keyword': em_kw,
                     'treatment_keyword': tr_kw,
                     'cooccurrence_count': count,
-                    'percentage': float(count / total_records * 100)
+                    'percentage': float(count / len(df) * 100)
                 })
 
     # Sort and store results
@@ -149,35 +139,45 @@ def analyze_treatment_subset(
     for i, pair in enumerate(cooccurrence_pairs[:5]):
         print(f"     {i+1}. {pair['emergency_keyword']} + {pair['treatment_keyword']}: {pair['cooccurrence_count']} ({pair['percentage']:.1f}%)")
     
-    # Path B validation metrics
+    # Step 7: Path B validation metrics
     print("\n7️⃣ Validating Path B strategy effectiveness...")
     
-    # Calculate keyword density
-    emergency_density = []
-    treatment_density = []
+    # Compute keyword density with progress bar
+    print("   Computing keyword density...")
+    with tqdm(total=2, desc="Density calculation") as pbar:
+        emergency_density = emergency_matrix.sum(axis=1)
+        pbar.update(1)
+        treatment_density = treatment_matrix.sum(axis=1)
+        pbar.update(1)
     
-    for _, row in df.iterrows():
-        text = str(row['clean_text']).lower()
-        em_matches = sum(1 for kw in emergency_keywords if kw.lower() in text)
-        tr_matches = sum(1 for kw in treatment_keywords if kw.lower() in text)
-        
-        emergency_density.append(em_matches)
-        treatment_density.append(tr_matches)
-    
+    # Store density in dataframe
     df['emergency_keyword_density'] = emergency_density
     df['treatment_keyword_density'] = treatment_density
     
+    # Calculate statistics
     stats['path_b_validation'] = {
         'avg_emergency_density': float(np.mean(emergency_density)),
         'avg_treatment_density': float(np.mean(treatment_density)),
-        'high_density_records': int(sum(1 for ed, td in zip(emergency_density, treatment_density) if ed >= 2 and td >= 2)),
-        'precision_estimate': float(sum(1 for ed, td in zip(emergency_density, treatment_density) if ed >= 1 and td >= 1) / total_records)
+        'high_density_records': int(sum((emergency_density >= 2) & (treatment_density >= 2))),
+        'precision_estimate': float(sum((emergency_density >= 1) & (treatment_density >= 1)) / len(df))
     }
     
-    print(f"   Average emergency keyword density: {stats['path_b_validation']['avg_emergency_density']:.2f}")
-    print(f"   Average treatment keyword density: {stats['path_b_validation']['avg_treatment_density']:.2f}")
-    print(f"   High-density records (≥2 each): {stats['path_b_validation']['high_density_records']}")
-    print(f"   Precision estimate: {stats['path_b_validation']['precision_estimate']:.2f}")
+    # Print detailed results
+    print("\n   Results:")
+    print(f"   - Average emergency keyword density: {stats['path_b_validation']['avg_emergency_density']:.2f}")
+    print(f"   - Average treatment keyword density: {stats['path_b_validation']['avg_treatment_density']:.2f}")
+    print(f"   - High-density records (≥2 each): {stats['path_b_validation']['high_density_records']}")
+    print(f"   - Precision estimate: {stats['path_b_validation']['precision_estimate']:.2f}")
+    
+    # Sample distribution analysis
+    print("\n   Density Distribution:")
+    density_counts = pd.DataFrame({
+        'emergency': emergency_density,
+        'treatment': treatment_density
+    }).value_counts().head()
+    print("   Top 5 density combinations (emergency, treatment):")
+    for (em, tr), count in density_counts.items():
+        print(f"   - {count} documents have {em} emergency and {tr} treatment keywords")
     
     # Condition mapping candidates
     print("\n8️⃣ Preparing condition mapping candidates...")
