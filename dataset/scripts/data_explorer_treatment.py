@@ -9,6 +9,19 @@ import numpy as np
 from tqdm import tqdm
 import re
 
+def calculate_density(matches, text_length):
+    """
+    Calculate keyword density per 1000 words
+    
+    Args:
+        matches: Number of keyword matches
+        text_length: Total text length
+        
+    Returns:
+        float: Density per 1000 words
+    """
+    return (matches / text_length) * 1000
+
 def analyze_treatment_subset(
     treatment_file_path, 
     emergency_keywords_path, 
@@ -98,7 +111,8 @@ def analyze_treatment_subset(
     # Process all emergency keywords
     print("\n   Processing all emergency keywords...")
     for i, keyword in enumerate(tqdm(emergency_keywords, desc="Emergency keywords")):
-        pattern = r'(?<!\w)' + re.escape(keyword) + r'(?!\w)'
+        # Using word boundary instead of negative lookbehind/lookahead
+        pattern = r'\b' + re.escape(keyword.lower()) + r'\b'
         emergency_matrix[:, i] = df['clean_text_lower'].str.contains(pattern, regex=True, na=False)
         matches = emergency_matrix[:, i].sum()
         print(f"   - {keyword}: {matches} matches")
@@ -106,7 +120,8 @@ def analyze_treatment_subset(
     # Process all treatment keywords
     print("\n   Processing all treatment keywords...")
     for i, keyword in enumerate(tqdm(treatment_keywords, desc="Treatment keywords")):
-        pattern = r'(?<!\w)' + re.escape(keyword) + r'(?!\w)'
+        # Using word boundary instead of negative lookbehind/lookahead
+        pattern = r'\b' + re.escape(keyword.lower()) + r'\b'
         treatment_matrix[:, i] = df['clean_text_lower'].str.contains(pattern, regex=True, na=False)
         matches = treatment_matrix[:, i].sum()
         print(f"   - {keyword}: {matches} matches")
@@ -145,167 +160,88 @@ def analyze_treatment_subset(
     # Compute keyword density with progress bar
     print("   Computing keyword density...")
     with tqdm(total=2, desc="Density calculation") as pbar:
-        emergency_density = emergency_matrix.sum(axis=1)
+        # Calculate density per 1000 words for both emergency and treatment keywords
+        emergency_density = calculate_density(
+            emergency_matrix.sum(axis=1),
+            df['text_length']
+        )
         pbar.update(1)
-        treatment_density = treatment_matrix.sum(axis=1)
+        
+        treatment_density = calculate_density(
+            treatment_matrix.sum(axis=1),
+            df['text_length']
+        )
         pbar.update(1)
     
-    # Store density in dataframe
+    # Store density in dataframe for visualization
     df['emergency_keyword_density'] = emergency_density
     df['treatment_keyword_density'] = treatment_density
     
-    # Calculate statistics
+    # Calculate statistics with the new density metrics
     stats['path_b_validation'] = {
         'avg_emergency_density': float(np.mean(emergency_density)),
         'avg_treatment_density': float(np.mean(treatment_density)),
-        'high_density_records': int(sum((emergency_density >= 2) & (treatment_density >= 2))),
-        'precision_estimate': float(sum((emergency_density >= 1) & (treatment_density >= 1)) / len(df))
+        'high_density_records': int(sum(
+            (emergency_density >= np.percentile(emergency_density, 75)) & 
+            (treatment_density >= np.percentile(treatment_density, 75))
+        )),
+        'precision_estimate': float(sum(
+            (emergency_density > 0) & (treatment_density > 0)
+        ) / len(df))
     }
     
     # Print detailed results
     print("\n   Results:")
-    print(f"   - Average emergency keyword density: {stats['path_b_validation']['avg_emergency_density']:.2f}")
-    print(f"   - Average treatment keyword density: {stats['path_b_validation']['avg_treatment_density']:.2f}")
-    print(f"   - High-density records (≥2 each): {stats['path_b_validation']['high_density_records']}")
+    print(f"   - Average emergency keyword density (per 1000 words): {stats['path_b_validation']['avg_emergency_density']:.2f}")
+    print(f"   - Average treatment keyword density (per 1000 words): {stats['path_b_validation']['avg_treatment_density']:.2f}")
+    print(f"   - High-density records (top 25% in both): {stats['path_b_validation']['high_density_records']}")
     print(f"   - Precision estimate: {stats['path_b_validation']['precision_estimate']:.2f}")
     
     # Sample distribution analysis
     print("\n   Density Distribution:")
     density_counts = pd.DataFrame({
-        'emergency': emergency_density,
-        'treatment': treatment_density
+        'emergency': pd.qcut(emergency_density, q=4, labels=['Low', 'Medium-Low', 'Medium-High', 'High']),
+        'treatment': pd.qcut(treatment_density, q=4, labels=['Low', 'Medium-Low', 'Medium-High', 'High'])
     }).value_counts().head()
     print("   Top 5 density combinations (emergency, treatment):")
     for (em, tr), count in density_counts.items():
-        print(f"   - {count} documents have {em} emergency and {tr} treatment keywords")
-    
-    # Condition mapping candidates
-    print("\n8️⃣ Preparing condition mapping candidates...")
-    
-    # Group emergency keywords by potential conditions
-    condition_candidates = {}
-    for pair in cooccurrence_pairs[:10]:  # Top 10 pairs
-        em_kw = pair['emergency_keyword']
-        tr_kw = pair['treatment_keyword']
-        
-        # Simple condition inference (can be enhanced later)
-        if any(cardiac_term in em_kw.lower() for cardiac_term in ['mi', 'cardiac', 'heart', 'chest']):
-            condition = 'cardiac'
-        elif any(resp_term in em_kw.lower() for resp_term in ['respiratory', 'breathing', 'lung', 'dyspnea']):
-            condition = 'respiratory'
-        elif any(neuro_term in em_kw.lower() for neuro_term in ['stroke', 'seizure', 'consciousness']):
-            condition = 'neurological'
-        else:
-            condition = 'general'
-        
-        if condition not in condition_candidates:
-            condition_candidates[condition] = []
-        
-        condition_candidates[condition].append({
-            'emergency_keyword': em_kw,
-            'treatment_keyword': tr_kw,
-            'strength': pair['cooccurrence_count']
-        })
-    
-    stats['condition_mapping_candidates'] = condition_candidates
+        print(f"   - {count} documents have {em} emergency and {tr} treatment density")
     
     # Visualization
-    print("\n9️⃣ Generating visualizations...")
+    print("\n8️⃣ Generating visualizations...")
     output_plots = output_dir / "plots"
     output_plots.mkdir(parents=True, exist_ok=True)
     
-    # 1. Dual keyword distribution
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
-    
-    # Emergency keywords in treatment subset
-    em_counts = list(stats['emergency_keyword_stats'].values())
-    em_labels = list(stats['emergency_keyword_stats'].keys())
-    ax1.bar(range(len(em_labels)), em_counts)
-    ax1.set_title('Emergency Keywords in Treatment Subset')
-    ax1.set_xlabel('Emergency Keywords')
-    ax1.set_ylabel('Document Count')
-    ax1.tick_params(axis='x', rotation=45, labelsize=8)
-    ax1.set_xticks(range(len(em_labels)))
-    ax1.set_xticklabels(em_labels, ha='right')
-    
-    # Treatment keywords
-    tr_counts = list(stats['treatment_keyword_stats'].values())
-    tr_labels = list(stats['treatment_keyword_stats'].keys())
-    ax2.bar(range(len(tr_labels)), tr_counts)
-    ax2.set_title('Treatment Keywords Distribution')
-    ax2.set_xlabel('Treatment Keywords')
-    ax2.set_ylabel('Document Count')
-    ax2.tick_params(axis='x', rotation=45, labelsize=8)
-    ax2.set_xticks(range(len(tr_labels)))
-    ax2.set_xticklabels(tr_labels, ha='right')
-    
-    plt.tight_layout()
-    plt.savefig(output_plots / "dual_keyword_distribution.png", bbox_inches='tight', dpi=300)
-    plt.close()
-    
-    # 2. Co-occurrence heatmap (top pairs)
-    if len(cooccurrence_pairs) > 0:
-        top_pairs = cooccurrence_pairs[:15]  # Top 15 for readability
-        cooc_matrix = np.zeros((len(set([p['emergency_keyword'] for p in top_pairs])), 
-                               len(set([p['treatment_keyword'] for p in top_pairs]))))
-        
-        em_unique = list(set([p['emergency_keyword'] for p in top_pairs]))
-        tr_unique = list(set([p['treatment_keyword'] for p in top_pairs]))
-        
-        for pair in top_pairs:
-            i = em_unique.index(pair['emergency_keyword'])
-            j = tr_unique.index(pair['treatment_keyword'])
-            cooc_matrix[i, j] = pair['cooccurrence_count']
-        
-        plt.figure(figsize=(12, 8))
-        sns.heatmap(cooc_matrix, 
-                   xticklabels=tr_unique, 
-                   yticklabels=em_unique,
-                   annot=True, 
-                   fmt='g',
-                   cmap='YlOrRd')
-        plt.title('Emergency-Treatment Keywords Co-occurrence Heatmap')
-        plt.xlabel('Treatment Keywords')
-        plt.ylabel('Emergency Keywords')
-        plt.xticks(rotation=45, ha='right')
-        plt.yticks(rotation=0)
-        plt.tight_layout()
-        plt.savefig(output_plots / "cooccurrence_heatmap.png", bbox_inches='tight', dpi=300)
-        plt.close()
-    
-    # 3. Text length distribution
-    plt.figure(figsize=(10, 6))
-    df['text_length'].hist(bins=50, alpha=0.7)
-    plt.title('Text Length Distribution in Treatment Subset')
-    plt.xlabel('Text Length (characters)')
-    plt.ylabel('Frequency')
-    plt.axvline(avg_length, color='red', linestyle='--', label=f'Average: {avg_length:.0f}')
-    plt.legend()
-    plt.savefig(output_plots / "text_length_distribution.png", bbox_inches='tight')
-    plt.close()
-    
-    # 4. Keyword density scatter plot
-    plt.figure(figsize=(10, 8))
-    plt.scatter(df['emergency_keyword_density'], df['treatment_keyword_density'], alpha=0.6)
-    plt.xlabel('Emergency Keyword Density')
-    plt.ylabel('Treatment Keyword Density')
+    # 1. Keyword density scatter plot with improved visualization
+    plt.figure(figsize=(12, 8))
+    plt.scatter(
+        emergency_density,
+        treatment_density,
+        alpha=0.6,
+        c=np.log1p(df['text_length']),  # Color by log text length
+        cmap='viridis'
+    )
+    plt.colorbar(label='Log Text Length')
+    plt.xlabel('Emergency Keyword Density (per 1000 words)')
+    plt.ylabel('Treatment Keyword Density (per 1000 words)')
     plt.title('Emergency vs Treatment Keyword Density')
     plt.grid(True, alpha=0.3)
-    plt.savefig(output_plots / "keyword_density_scatter.png", bbox_inches='tight')
+    
+    # Add mean lines
+    plt.axvline(x=np.mean(emergency_density), color='r', linestyle='--', alpha=0.5, label='Mean Emergency Density')
+    plt.axhline(y=np.mean(treatment_density), color='g', linestyle='--', alpha=0.5, label='Mean Treatment Density')
+    plt.legend()
+    
+    plt.savefig(output_plots / "keyword_density_scatter.png", bbox_inches='tight', dpi=300)
     plt.close()
     
     # Save comprehensive statistics
-    print("\n🔟 Saving analysis results...")
+    print("\n9️⃣ Saving analysis results...")
     stats_dir = output_dir / "stats"
     stats_dir.mkdir(parents=True, exist_ok=True)
     
     with open(stats_dir / "treatment_analysis_comprehensive.json", 'w', encoding='utf-8') as f:
         json.dump(stats, f, indent=2, ensure_ascii=False)
-    
-    # Save co-occurrence pairs as CSV for easy review
-    if cooccurrence_pairs:
-        cooc_df = pd.DataFrame(cooccurrence_pairs)
-        cooc_df.to_csv(stats_dir / "cooccurrence_pairs.csv", index=False)
     
     print(f"✅ Treatment subset analysis complete!")
     print(f"   Results saved to: {output_dir}")
