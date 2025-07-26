@@ -1,0 +1,29 @@
+{
+  "sample_analysis": {
+    "matched": {
+      "non_null": 100,
+      "non_empty": 100,
+      "unique_values": 84
+    },
+    "treatment_matched": {
+      "non_null": 100,
+      "non_empty": 100,
+      "unique_values": 100
+    }
+  },
+  "full_file_analysis": {
+    "total_records": 9367,
+    "matched_column": {
+      "non_null_count": 9367,
+      "non_empty_count": 9367,
+      "null_percentage": 0.0
+    },
+    "treatment_matched_column": {
+      "non_null_count": 9367,
+      "non_empty_count": 9367,
+      "null_percentage": 0.0
+    },
+    "both_matched_count": 3315,
+    "both_matched_percentage": 35.39019963702359
+  }
+}
