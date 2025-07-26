@@ -1,36 +1,20 @@
 import os
 import re
+import json
 import pandas as pd
+from pathlib import Path
 
-# Medical term processor class for handling special terms
 class MedicalTermProcessor:
     def __init__(self):
-        # Emergency special terms mapping
-        self.emergency_special_terms = {
-            # Cardiac
-            'mi': ['mi', 'm.i.', 'myocardial infarction', 'MI'],
-            'acs': ['acs', 'ACS', 'acute coronary syndrome'],
+        # Load emergency special terms from JSON
+        keywords_dir = Path("../keywords")
+        with open(keywords_dir / "special_terms_emergency.json", "r") as f:
+            self.emergency_terms_by_category = json.load(f)
             
-            # Respiratory
-            'ards': ['ards', 'ARDS', 'acute respiratory distress syndrome'],
-            'respiratory_failure': ['respiratory failure', 'resp failure', 'RF'],
-            
-            # Neurological
-            'loc': ['loc', 'LOC', 'loss of consciousness'],
-            'cva': ['cva', 'CVA', 'stroke', 'cerebrovascular accident'],
-            
-            # Shock States
-            'shock': ['shock', 'circulatory failure'],
-            'septic_shock': ['septic shock', 'sepsis induced shock'],
-            
-            # Bleeding
-            'gi_bleed': ['gi bleed', 'gi bleeding', 'gastrointestinal hemorrhage', 'GI hemorrhage'],
-            'hemorrhage': ['hemorrhage', 'bleeding', 'blood loss'],
-            
-            # Vital Signs
-            'hypotension': ['hypotension', 'low bp', 'low blood pressure'],
-            'tachycardia': ['tachycardia', 'elevated heart rate', 'fast heart rate']
-        }
+        # Flatten the nested structure for easy lookup
+        self.emergency_special_terms = {}
+        for category in self.emergency_terms_by_category.values():
+            self.emergency_special_terms.update(category)
         
     def get_all_variants(self):
         """Get all term variants including special terms"""
@@ -38,6 +22,32 @@ class MedicalTermProcessor:
         for term_list in self.emergency_special_terms.values():
             variants.extend(term_list)
         return variants
+
+    def standardize_term(self, term: str) -> str:
+        """Convert a term to its standard form if it's a variant"""
+        term_lower = term.lower()
+        for standard_term, variants in self.emergency_special_terms.items():
+            if term_lower in [v.lower() for v in variants]:
+                return standard_term
+        return term
+
+    def process_matches(self, matches: list) -> str:
+        """Process matches to standardize terms and remove duplicates"""
+        if not matches:
+            return ""
+        
+        # Standardize terms
+        standardized = [self.standardize_term(match) for match in matches]
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_matches = []
+        for term in standardized:
+            if term.lower() not in seen:
+                unique_matches.append(term)
+                seen.add(term.lower())
+                
+        return "|".join(unique_matches)
 
 # Function: Load keywords and print progress
 def load_keywords(path, processor):
@@ -70,7 +80,7 @@ df["matched"] = (
     df["clean_text"]
       .fillna("")  # Convert NaN to empty string
       .str.findall(pattern, flags=re.IGNORECASE)
-      .apply(lambda lst: "|".join(lst) if lst else "")
+      .apply(lambda matches: processor.process_matches(matches))  # Use new process_matches method
 )
 df["has_emergency"] = df["matched"].str.len() > 0
 
