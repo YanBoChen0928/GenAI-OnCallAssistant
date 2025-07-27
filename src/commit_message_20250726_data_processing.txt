@@ -1,0 +1,38 @@
+feat(data-processing): implement data processing pipeline with embeddings
+
+BREAKING CHANGE: Add data processing implementation with robust path handling
+
+Key Changes:
+1. Create DataProcessor class for medical data processing:
+   - Handle paths with spaces and special characters
+   - Support dataset/dataset directory structure
+   - Add detailed logging for debugging
+
+2. Implement core functionalities:
+   - Load filtered emergency and treatment data
+   - Create intelligent chunks based on matched keywords
+   - Generate embeddings using NeuML/pubmedbert-base-embeddings
+   - Build ANNOY indices for vector search
+   - Save embeddings and metadata separately
+
+3. Add test coverage:
+   - Basic data loading tests
+   - Chunking functionality tests
+   - Model loading tests
+
+Technical Details:
+- Use pathlib.Path.resolve() for robust path handling
+- Separate storage for embeddings and indices:
+  * /models/embeddings/ for vector representations
+  * /models/indices/annoy/ for search indices
+- Keep keywords as metadata without embedding
+
+Testing:
+✅ Data loading: 11,914 emergency + 11,023 treatment records
+✅ Chunking: Successful with keyword-centered approach
+✅ Model loading: NeuML/pubmedbert-base-embeddings (768 dims)
+
+Next Steps:
+- Integrate with Meditron for enhanced processing
+- Implement prompt engineering
+- Add hybrid search functionality
