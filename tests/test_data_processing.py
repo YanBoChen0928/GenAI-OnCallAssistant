@@ -6,8 +6,8 @@ to ensure everything is working correctly before proceeding with embedding gener
 """
 
 import sys
-import pandas as pd
 from pathlib import Path
+import pandas as pd
 
 # Add src to path
 sys.path.append(str(Path(__file__).parent.parent.resolve() / "src"))
@@ -16,7 +16,13 @@ from data_processing import DataProcessor
 import logging
 
 # Setup logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(levelname)s:%(name)s:%(message)s'
+)
+# Silence urllib3 logging
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 def test_data_loading():
@@ -154,6 +160,32 @@ def test_model_loading():
         traceback.print_exc()
         return False
 
+def test_token_chunking():
+    """Test token-based chunking functionality"""
+    try:
+        processor = DataProcessor()
+        
+        test_text = "Patient presents with acute chest pain radiating to left arm. Initial ECG shows ST elevation."
+        test_keywords = "chest pain|ST elevation"
+        
+        chunks = processor.create_keyword_centered_chunks(
+            text=test_text,
+            matched_keywords=test_keywords
+        )
+        
+        print(f"\nToken chunking test:")
+        print(f"✓ Generated {len(chunks)} chunks")
+        for i, chunk in enumerate(chunks, 1):
+            print(f"\nChunk {i}:")
+            print(f"  Primary keyword: {chunk['primary_keyword']}")
+            print(f"  Content: {chunk['text']}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Token chunking test failed: {e}")
+        return False
+
 def main():
     """Run all tests"""
     print("Starting data processing tests...\n")
@@ -164,7 +196,8 @@ def main():
     tests = [
         test_data_loading,
         test_chunking,
-        test_model_loading
+        test_model_loading,
+        test_token_chunking  # Added new test
     ]
     
     results = []
