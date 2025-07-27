@@ -1,0 +1,85 @@
+# Keyword Matching and Text Cleaning Logic for Subset Filtering
+
+## 1. Keyword Preprocessing
+```python
+def preprocess_keywords(keywords_file):
+    # Handle special medical term variants
+    special_terms = {
+        'x-ray': ['x-ray', 'x ray', 'xray'],
+        'ct-scan': ['ct-scan', 'ct scan', 'ctscan'],
+        'point-of-care': ['point-of-care', 'point of care']
+    }
+    
+    # Read and preprocess keywords
+    with open(keywords_file, "r", encoding="utf-8") as f:
+        keywords = [
+            line.strip()  # Remove whitespace
+            .lower()      # Convert to lowercase
+            for line in f 
+            if line.strip()
+        ]
+    
+    # Process special term variants
+    processed_keywords = []
+    for kw in keywords:
+        if kw in special_terms:
+            processed_keywords.extend(special_terms[kw])
+        else:
+            processed_keywords.append(kw)
+    
+    return processed_keywords
+```
+
+## 2. Regex Pattern Processing
+```python
+def create_regex_pattern(keywords):
+    # Simple word boundary matching
+    pattern = r"\b(?:" + "|".join(map(re.escape, keywords)) + r")\b"
+    return re.compile(pattern, re.IGNORECASE)
+```
+
+### Regex Pattern Explanation:
+- `\b`: Word boundary matching
+- `(?:...)`: Non-capturing group
+- `re.escape()`: Escape special characters
+- `re.IGNORECASE`: Case-insensitive matching
+
+## 3. Text Preprocessing and Matching
+```python
+# Create lowercase version of text
+df['clean_text_lower'] = df['clean_text'].fillna('').str.lower()
+
+# Match keywords
+df["treatment_matched"] = (
+    df["clean_text_lower"]
+    .apply(lambda text: "|".join(pattern.findall(text)) or "")
+)
+```
+
+## 4. Processing Logic Details
+
+### 4.1 Special Term Handling Rationale
+- Common variants in medical literature
+- Maintain semantic consistency
+- Improve matching accuracy
+
+### 4.2 Regex Matching Strategy
+- Word boundary matching for complete terms
+- Precompiled patterns for performance
+- Case-insensitive matching for flexibility
+
+### 4.3 Text Preprocessing Steps
+1. Fill null values (fillna)
+2. Convert to lowercase (str.lower)
+3. Create dedicated lowercase column to avoid repeated conversions
+
+## 5. Output Format
+- matched column: Pipe-separated matched keywords
+- type column: Document type identifier ("emergency" or "treatment")
+- condition column: Reserved for future condition mapping
+
+## 6. Important Considerations
+1. Regular maintenance required for special term variants
+2. Precompiled regex patterns for performance optimization
+3. Dedicated text preprocessing storage to avoid redundant computations
+4. Maintain consistent column structure between emergency and treatment subsets 
