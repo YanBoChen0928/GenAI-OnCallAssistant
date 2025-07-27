@@ -8,3 +8,5 @@ genAIvenv/
 .DS_Store   
 
 docs/
+
+*.pyc
