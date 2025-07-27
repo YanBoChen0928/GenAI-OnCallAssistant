@@ -12,7 +12,7 @@ Author: OnCall.ai Team
 Date: 2025-07-26
 """
 
-import os
+# Required imports for core functionality
 import json
 import pandas as pd
 import numpy as np
@@ -23,8 +23,14 @@ from annoy import AnnoyIndex
 import logging
 
 # Setup logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,  # change between INFO and DEBUG level
+    format='%(levelname)s:%(name)s:%(message)s'
+)
 logger = logging.getLogger(__name__)
+
+# Explicitly define what should be exported
+__all__ = ['DataProcessor']
 
 class DataProcessor:
     """Main data processing class for OnCall.ai RAG system"""
@@ -37,16 +43,18 @@ class DataProcessor:
             base_dir: Base directory path for the project
         """
         self.base_dir = Path(base_dir).resolve() if base_dir else Path(__file__).parent.parent.resolve()
-        self.dataset_dir = (self.base_dir / "dataset" / "dataset").resolve()  # 修正为实际的数据目录
+        self.dataset_dir = (self.base_dir / "dataset" / "dataset").resolve()  # modify to actual dataset directory
         self.models_dir = (self.base_dir / "models").resolve()
         
         # Model configuration
         self.embedding_model_name = "NeuML/pubmedbert-base-embeddings"
         self.embedding_dim = 768  # PubMedBERT dimension
-        self.chunk_size = 512
+        self.chunk_size = 256    # Changed to tokens instead of characters
+        self.chunk_overlap = 64  # Added overlap configuration
         
-        # Initialize model (will be loaded when needed)
+        # Initialize model and tokenizer (will be loaded when needed)
         self.embedding_model = None
+        self.tokenizer = None
         
         # Data containers
         self.emergency_data = None
@@ -54,17 +62,24 @@ class DataProcessor:
         self.emergency_chunks = []
         self.treatment_chunks = []
         
+        # Initialize indices
+        self.emergency_index = None
+        self.treatment_index = None
+        
         logger.info(f"Initialized DataProcessor with:")
         logger.info(f"  Base directory: {self.base_dir}")
         logger.info(f"  Dataset directory: {self.dataset_dir}")
         logger.info(f"  Models directory: {self.models_dir}")
+        logger.info(f"  Chunk size (tokens): {self.chunk_size}")
+        logger.info(f"  Chunk overlap (tokens): {self.chunk_overlap}")
     
     def load_embedding_model(self):
-        """Load the embedding model"""
+        """Load the embedding model and initialize tokenizer"""
         if self.embedding_model is None:
             logger.info(f"Loading embedding model: {self.embedding_model_name}")
             self.embedding_model = SentenceTransformer(self.embedding_model_name)
-            logger.info("Embedding model loaded successfully")
+            self.tokenizer = self.embedding_model.tokenizer
+            logger.info("Embedding model and tokenizer loaded successfully")
         return self.embedding_model
     
     def load_filtered_data(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -99,14 +114,14 @@ class DataProcessor:
         return self.emergency_data, self.treatment_data
     
     def create_keyword_centered_chunks(self, text: str, matched_keywords: str, 
-                                     chunk_size: int = 512, doc_id: str = None) -> List[Dict[str, Any]]:
+                                     chunk_size: int = None, doc_id: str = None) -> List[Dict[str, Any]]:
         """
-        Create chunks centered around matched keywords
+        Create chunks centered around matched keywords using tokenizer
         
         Args:
             text: Input text
             matched_keywords: Pipe-separated keywords (e.g., "MI|chest pain|fever")
-            chunk_size: Size of each chunk
+            chunk_size: Size of each chunk in tokens (defaults to self.chunk_size)
             doc_id: Document ID for tracking
             
         Returns:
@@ -114,34 +129,77 @@ class DataProcessor:
         """
         if not matched_keywords or pd.isna(matched_keywords):
             return []
+            
+        # Load model if not loaded (to get tokenizer)
+        if self.tokenizer is None:
+            self.load_embedding_model()
+            
+        # Convert text and keywords to lowercase at the start
+        text = text.lower()
+        keywords = [kw.lower() for kw in matched_keywords.split("|")] if matched_keywords else []
         
+        chunk_size = chunk_size or self.chunk_size
         chunks = []
-        keywords = matched_keywords.split("|") if matched_keywords else []
+        
+        # Tokenize full text once
+        full_text_tokens = self.tokenizer.tokenize(text)
+        total_tokens = len(full_text_tokens)
         
         for i, keyword in enumerate(keywords):
-            # Find keyword position in text (case insensitive)
-            keyword_pos = text.lower().find(keyword.lower())
+            # Find keyword position in text (already lowercase)
+            keyword_pos = text.find(keyword)
             
             if keyword_pos != -1:
-                # Calculate chunk boundaries centered on keyword
-                start = max(0, keyword_pos - chunk_size // 2)
-                end = min(len(text), keyword_pos + chunk_size // 2)
+                # Get the keyword text (already lowercase)
+                actual_keyword = text[keyword_pos:keyword_pos + len(keyword)]
                 
-                # Extract chunk text
-                chunk_text = text[start:end].strip()
+                # Get text before and after keyword
+                text_before = text[:keyword_pos]
+                text_after = text[keyword_pos + len(keyword):]
                 
-                if chunk_text:  # Only add non-empty chunks
+                # Tokenize each part separately
+                tokens_before = self.tokenizer.tokenize(text_before)
+                keyword_tokens = self.tokenizer.tokenize(actual_keyword)
+                tokens_after = self.tokenizer.tokenize(text_after)
+                
+                # Calculate token positions
+                keyword_start_pos = len(tokens_before)
+                keyword_length = len(keyword_tokens)
+                
+                # Calculate how many tokens we want on each side of the keyword
+                tokens_each_side = (chunk_size - keyword_length) // 2
+                
+                # Calculate chunk boundaries
+                chunk_start = max(0, keyword_start_pos - tokens_each_side)
+                chunk_end = min(total_tokens, keyword_start_pos + keyword_length + tokens_each_side)
+                
+                # Add overlap if possible
+                if chunk_start > 0:
+                    chunk_start = max(0, chunk_start - self.chunk_overlap)
+                if chunk_end < total_tokens:
+                    chunk_end = min(total_tokens, chunk_end + self.chunk_overlap)
+                
+                # Extract chunk tokens and convert to text
+                chunk_tokens = full_text_tokens[chunk_start:chunk_end]
+                chunk_text = self.tokenizer.convert_tokens_to_string(chunk_tokens)
+                
+                # Verify the keyword is in the chunk (direct comparison since all lowercase)
+                if chunk_text and actual_keyword in chunk_text:
                     chunk_info = {
                         "text": chunk_text,
-                        "primary_keyword": keyword,
-                        "all_matched_keywords": matched_keywords,
-                        "keyword_position": keyword_pos,
-                        "chunk_start": start,
-                        "chunk_end": end,
+                        "primary_keyword": actual_keyword,
+                        "all_matched_keywords": matched_keywords.lower(),
+                        "token_position": keyword_start_pos,
+                        "token_start": chunk_start,
+                        "token_end": chunk_end,
+                        "token_count": len(chunk_tokens),
                         "chunk_id": f"{doc_id}_chunk_{i}" if doc_id else f"chunk_{i}",
                         "source_doc_id": doc_id
                     }
                     chunks.append(chunk_info)
+                    logger.info(f"Created chunk for keyword '{actual_keyword}' with {len(chunk_tokens)} tokens")
+                else:
+                    logger.warning(f"Failed to create valid chunk for keyword '{actual_keyword}' - keyword not found in generated chunk")
         
         return chunks
     
@@ -324,7 +382,7 @@ class DataProcessor:
         return all_embeddings
     
     def build_annoy_index(self, embeddings: np.ndarray, 
-                         index_name: str, n_trees: int = 10) -> AnnoyIndex:
+                         index_name: str, n_trees: int = 15) -> AnnoyIndex:
         """
         Build ANNOY index from embeddings
         
@@ -483,8 +541,8 @@ class DataProcessor:
         treatment_embeddings = self.generate_embeddings(treatment_chunks, "treatment")
         
         # Step 4: Build ANNOY indices
-        emergency_index = self.build_annoy_index(emergency_embeddings, "emergency_index")
-        treatment_index = self.build_annoy_index(treatment_embeddings, "treatment_index")
+        self.emergency_index = self.build_annoy_index(emergency_embeddings, "emergency_index")
+        self.treatment_index = self.build_annoy_index(treatment_embeddings, "treatment_index")
         
         # Step 5: Save data
         self.save_chunks_and_embeddings(emergency_chunks, emergency_embeddings, "emergency")
