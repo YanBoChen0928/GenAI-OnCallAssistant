@@ -1,0 +1,105 @@
+ACLS
+administer
+Adrenaline
+Advanced Cardiac Life Support
+Airway Management
+alpha blocker
+Amiodarone
+analgesia
+Anesthesia Procedural
+Anti-Bacterial Agents
+antibiotic
+arterial line placement
+beta blocker
+Bi-level Positive Airway Pressure
+bipap
+Blood Transfusion
+Bosmin
+Cardiopulmonary Resuscitation
+Cardioversion
+Catheterization Arterial
+Catheterization Central Venous
+central line placement
+compression dressing
+Computed Tomography
+cpap
+cpr
+crystalloids
+ct scan
+Defibrillation
+Dopamine
+Dosage Forms
+dose
+Drug Administration Routes
+Drug Therapy
+Epinephrine
+fluid
+fluid resuscitation
+hemodynamic monitoring
+Hemodynamics
+Hemostasis
+Ibuprofen
+icu transfer
+Insulin
+intervention
+intubation
+Intratracheal Intubation
+Intravenous Infusion
+iv fluids
+laboratory techniques
+laboratory testing
+levophed
+Lidocaine
+manage
+management
+medication
+midazolam
+monitor
+monitoring
+Morphine
+Nebulization
+nitroglycerin
+NTG
+Norepinephrine
+normal saline
+Ondansetron
+Oxygen
+Oxygen Inhalation Therapy
+oxygen therapy
+Patient Management
+Patient Monitoring
+POCUS
+point of care ultrasound
+procedural sedation
+procedure
+radiologic imaging
+Radiography
+resuscitation
+Sedation
+splinting
+Splints
+supportive care
+surgical procedures
+Surgical Procedures Operative
+surgery
+Suture
+Suturing
+Therapeutic Intervention
+Therapeutics
+Therapy
+tourniquet
+transfusion
+treat
+treatment
+Ultrasonography Point of Care
+ultrasound
+Vasoconstrictor Agents
+vasopressors
+ventilation support
+Ventilators
+Vital Signs
+vital signs monitoring
+wound care
+Wound Dressing
+Wound Management
+X-Ray
