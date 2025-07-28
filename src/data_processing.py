@@ -21,6 +21,7 @@ from typing import List, Dict, Tuple, Any
 from sentence_transformers import SentenceTransformer
 from annoy import AnnoyIndex
 import logging
+from tqdm import tqdm
 
 # Setup logging
 logging.basicConfig(
@@ -141,10 +142,23 @@ class DataProcessor:
         chunk_size = chunk_size or self.chunk_size
         chunks = []
         
-        # Tokenize full text once
-        full_text_tokens = self.tokenizer.tokenize(text)
-        total_tokens = len(full_text_tokens)
+        # Calculate character-to-token ratio using a sample around the first keyword
+        if keywords:
+            first_keyword = keywords[0]
+            first_pos = text.find(first_keyword)
+            if first_pos != -1:
+                # Take a sample around the first keyword for ratio calculation
+                sample_start = max(0, first_pos - 100)
+                sample_end = min(len(text), first_pos + len(first_keyword) + 100)
+                sample_text = text[sample_start:sample_end]
+                sample_tokens = len(self.tokenizer.tokenize(sample_text))
+                chars_per_token = len(sample_text) / sample_tokens if sample_tokens > 0 else 4.0
+            else:
+                chars_per_token = 4.0  # Fallback ratio
+        else:
+            chars_per_token = 4.0  # Default ratio
         
+        # Process keywords
         for i, keyword in enumerate(keywords):
             # Find keyword position in text (already lowercase)
             keyword_pos = text.find(keyword)
@@ -153,53 +167,66 @@ class DataProcessor:
                 # Get the keyword text (already lowercase)
                 actual_keyword = text[keyword_pos:keyword_pos + len(keyword)]
                 
-                # Get text before and after keyword
-                text_before = text[:keyword_pos]
-                text_after = text[keyword_pos + len(keyword):]
+                # Calculate rough window size using dynamic ratio
+                # Cap the rough chunk target token size to prevent tokenizer warnings
+                # Use 512 tokens as target (model's max limit)
+                ROUGH_CHUNK_TARGET_TOKENS = 512
+                char_window = int(ROUGH_CHUNK_TARGET_TOKENS * chars_per_token / 2)
                 
-                # Tokenize each part separately
+                # Get rough chunk boundaries in characters
+                rough_start = max(0, keyword_pos - char_window)
+                rough_end = min(len(text), keyword_pos + len(keyword) + char_window)
+                
+                # Extract rough chunk for processing
+                rough_chunk = text[rough_start:rough_end]
+                
+                # Find keyword's relative position in rough chunk
+                rel_pos = rough_chunk.find(actual_keyword)
+                if rel_pos == -1:
+                    logger.debug(f"Could not locate keyword '{actual_keyword}' in rough chunk for doc {doc_id}")
+                    continue
+                
+                # Calculate token position by tokenizing text before keyword
+                text_before = rough_chunk[:rel_pos]
                 tokens_before = self.tokenizer.tokenize(text_before)
-                keyword_tokens = self.tokenizer.tokenize(actual_keyword)
-                tokens_after = self.tokenizer.tokenize(text_after)
-                
-                # Calculate token positions
                 keyword_start_pos = len(tokens_before)
+                
+                # Tokenize necessary parts
+                chunk_tokens = self.tokenizer.tokenize(rough_chunk)
+                keyword_tokens = self.tokenizer.tokenize(actual_keyword)
                 keyword_length = len(keyword_tokens)
                 
-                # Calculate how many tokens we want on each side of the keyword
+                # Calculate final chunk boundaries in tokens
                 tokens_each_side = (chunk_size - keyword_length) // 2
-                
-                # Calculate chunk boundaries
                 chunk_start = max(0, keyword_start_pos - tokens_each_side)
-                chunk_end = min(total_tokens, keyword_start_pos + keyword_length + tokens_each_side)
+                chunk_end = min(len(chunk_tokens), keyword_start_pos + keyword_length + tokens_each_side)
                 
                 # Add overlap if possible
                 if chunk_start > 0:
                     chunk_start = max(0, chunk_start - self.chunk_overlap)
-                if chunk_end < total_tokens:
-                    chunk_end = min(total_tokens, chunk_end + self.chunk_overlap)
+                if chunk_end < len(chunk_tokens):
+                    chunk_end = min(len(chunk_tokens), chunk_end + self.chunk_overlap)
                 
-                # Extract chunk tokens and convert to text
-                chunk_tokens = full_text_tokens[chunk_start:chunk_end]
-                chunk_text = self.tokenizer.convert_tokens_to_string(chunk_tokens)
+                # Extract final tokens and convert to text
+                final_tokens = chunk_tokens[chunk_start:chunk_end]
+                chunk_text = self.tokenizer.convert_tokens_to_string(final_tokens)
                 
-                # Verify the keyword is in the chunk (direct comparison since all lowercase)
+                # Verify keyword presence in final chunk
                 if chunk_text and actual_keyword in chunk_text:
                     chunk_info = {
                         "text": chunk_text,
                         "primary_keyword": actual_keyword,
                         "all_matched_keywords": matched_keywords.lower(),
-                        "token_position": keyword_start_pos,
-                        "token_start": chunk_start,
-                        "token_end": chunk_end,
-                        "token_count": len(chunk_tokens),
+                        "token_count": len(final_tokens),
                         "chunk_id": f"{doc_id}_chunk_{i}" if doc_id else f"chunk_{i}",
                         "source_doc_id": doc_id
                     }
                     chunks.append(chunk_info)
-                    logger.info(f"Created chunk for keyword '{actual_keyword}' with {len(chunk_tokens)} tokens")
                 else:
-                    logger.warning(f"Failed to create valid chunk for keyword '{actual_keyword}' - keyword not found in generated chunk")
+                    logger.debug(f"Could not create chunk for keyword '{actual_keyword}' in doc {doc_id}")
+        
+        if chunks:
+            logger.debug(f"Created {len(chunks)} chunks for document {doc_id or 'unknown'}")
         
         return chunks
     
@@ -276,14 +303,17 @@ class DataProcessor:
     
     def process_emergency_chunks(self) -> List[Dict[str, Any]]:
         """Process emergency data into chunks"""
-        logger.info("Processing emergency data into chunks...")
-        
         if self.emergency_data is None:
             raise ValueError("Emergency data not loaded. Call load_filtered_data() first.")
         
         all_chunks = []
         
-        for idx, row in self.emergency_data.iterrows():
+        # Add progress bar with leave=False to avoid cluttering
+        for idx, row in tqdm(self.emergency_data.iterrows(), 
+                        total=len(self.emergency_data),
+                        desc="Processing emergency documents",
+                        unit="doc",
+                        leave=False):
             if pd.notna(row.get('clean_text')) and pd.notna(row.get('matched')):
                 chunks = self.create_keyword_centered_chunks(
                     text=row['clean_text'],
@@ -305,19 +335,22 @@ class DataProcessor:
                 all_chunks.extend(chunks)
         
         self.emergency_chunks = all_chunks
-        logger.info(f"Generated {len(all_chunks)} emergency chunks")
+        logger.info(f"Completed processing emergency data: {len(all_chunks)} chunks generated")
         return all_chunks
     
     def process_treatment_chunks(self) -> List[Dict[str, Any]]:
         """Process treatment data into chunks"""
-        logger.info("Processing treatment data into chunks...")
-        
         if self.treatment_data is None:
             raise ValueError("Treatment data not loaded. Call load_filtered_data() first.")
         
         all_chunks = []
         
-        for idx, row in self.treatment_data.iterrows():
+        # Add progress bar with leave=False to avoid cluttering
+        for idx, row in tqdm(self.treatment_data.iterrows(),
+                        total=len(self.treatment_data),
+                        desc="Processing treatment documents",
+                        unit="doc",
+                        leave=False):
             if (pd.notna(row.get('clean_text')) and 
                 pd.notna(row.get('treatment_matched'))):
                 
@@ -343,13 +376,39 @@ class DataProcessor:
                 all_chunks.extend(chunks)
         
         self.treatment_chunks = all_chunks
-        logger.info(f"Generated {len(all_chunks)} treatment chunks")
+        logger.info(f"Completed processing treatment data: {len(all_chunks)} chunks generated")
         return all_chunks
     
+    def _get_chunk_hash(self, text: str) -> str:
+        """Generate hash for chunk text to use as cache key"""
+        import hashlib
+        return hashlib.md5(text.encode('utf-8')).hexdigest()
+
+    def _load_embedding_cache(self, cache_file: str) -> dict:
+        """Load embedding cache from file"""
+        import pickle
+        import os
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, 'rb') as f:
+                    return pickle.load(f)
+            except:
+                logger.warning(f"Could not load cache file {cache_file}, starting fresh")
+                return {}
+        return {}
+
+    def _save_embedding_cache(self, cache: dict, cache_file: str):
+        """Save embedding cache to file"""
+        import pickle
+        import os
+        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+        with open(cache_file, 'wb') as f:
+            pickle.dump(cache, f)
+
     def generate_embeddings(self, chunks: List[Dict[str, Any]], 
                           chunk_type: str = "emergency") -> np.ndarray:
         """
-        Generate embeddings for chunks
+        Generate embeddings for chunks with caching support
         
         Args:
             chunks: List of chunk dictionaries
@@ -358,28 +417,78 @@ class DataProcessor:
         Returns:
             numpy array of embeddings
         """
-        logger.info(f"Generating embeddings for {len(chunks)} {chunk_type} chunks...")
+        logger.info(f"Starting embedding generation for {len(chunks)} {chunk_type} chunks...")
         
-        # Load model if not already loaded
-        model = self.load_embedding_model()
+        # Cache setup
+        cache_dir = self.models_dir / "cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = cache_dir / f"{chunk_type}_embeddings_cache.pkl"
         
-        # Extract text from chunks
-        texts = [chunk['text'] for chunk in chunks]
+        # Load existing cache
+        cache = self._load_embedding_cache(str(cache_file))
         
-        # Generate embeddings in batches
-        batch_size = 32
-        embeddings = []
+        cached_embeddings = []
+        to_embed = []
         
-        for i in range(0, len(texts), batch_size):
-            batch_texts = texts[i:i+batch_size]
-            batch_embeddings = model.encode(batch_texts, show_progress_bar=True)
-            embeddings.append(batch_embeddings)
+        # Check cache for each chunk
+        for i, chunk in enumerate(chunks):
+            chunk_hash = self._get_chunk_hash(chunk['text'])
+            if chunk_hash in cache:
+                cached_embeddings.append((i, cache[chunk_hash]))
+            else:
+                to_embed.append((i, chunk_hash, chunk['text']))
         
-        # Concatenate all embeddings
-        all_embeddings = np.vstack(embeddings)
+        logger.info(f"Cache status: {len(cached_embeddings)} cached, {len(to_embed)} new chunks to embed")
         
-        logger.info(f"Generated embeddings shape: {all_embeddings.shape}")
-        return all_embeddings
+        # Generate embeddings for new chunks
+        new_embeddings = []
+        if to_embed:
+            # Load model
+            model = self.load_embedding_model()
+            texts = [text for _, _, text in to_embed]
+            
+            # Generate embeddings in batches with clear progress
+            batch_size = 32
+            total_batches = (len(texts) + batch_size - 1) // batch_size
+            
+            logger.info(f"Processing {len(texts)} new {chunk_type} texts in {total_batches} batches...")
+            
+            for i in tqdm(range(0, len(texts), batch_size), 
+                         desc=f"Embedding {chunk_type} subset",
+                         total=total_batches,
+                         unit="batch", 
+                         leave=False):
+                batch_texts = texts[i:i + batch_size]
+                batch_emb = model.encode(
+                    batch_texts,
+                    show_progress_bar=False
+                )
+                new_embeddings.extend(batch_emb)
+            
+            # Update cache with new embeddings
+            for (_, chunk_hash, _), emb in zip(to_embed, new_embeddings):
+                cache[chunk_hash] = emb
+            
+            # Save updated cache
+            self._save_embedding_cache(cache, str(cache_file))
+            logger.info(f"Updated cache with {len(new_embeddings)} new embeddings")
+        
+        # Combine cached and new embeddings in correct order
+        all_embeddings = [None] * len(chunks)
+        
+        # Place cached embeddings
+        for idx, emb in cached_embeddings:
+            all_embeddings[idx] = emb
+        
+        # Place new embeddings
+        for (idx, _, _), emb in zip(to_embed, new_embeddings):
+            all_embeddings[idx] = emb
+        
+        # Convert to numpy array
+        result = np.vstack(all_embeddings)
+        logger.info(f"Completed embedding generation: shape {result.shape}")
+        
+        return result
     
     def build_annoy_index(self, embeddings: np.ndarray, 
                          index_name: str, n_trees: int = 15) -> AnnoyIndex:
