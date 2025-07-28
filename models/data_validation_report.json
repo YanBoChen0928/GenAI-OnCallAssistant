@@ -1,0 +1,34 @@
+{
+  "emergency_data": {
+    "total_records": 11914,
+    "records_with_text": "11914",
+    "records_with_keywords": "11914",
+    "avg_text_length": 23847.07579318449
+  },
+  "treatment_data": {
+    "total_records": 11023,
+    "records_with_text": "11023",
+    "records_with_emergency_keywords": "11023",
+    "records_with_treatment_keywords": "11023",
+    "avg_text_length": 25408.635489431188
+  },
+  "chunks": {
+    "emergency_chunks": 27493,
+    "treatment_chunks": 82378,
+    "total_chunks": 109871,
+    "avg_emergency_chunk_length": 1842.0385188957189,
+    "avg_treatment_chunk_length": 250.30090558158733
+  },
+  "embeddings": {
+    "emergency_embeddings_exist": true,
+    "treatment_embeddings_exist": true,
+    "emergency_embeddings_shape": [
+      27493,
+      768
+    ],
+    "treatment_embeddings_shape": [
+      82378,
+      768
+    ]
+  }
+}
