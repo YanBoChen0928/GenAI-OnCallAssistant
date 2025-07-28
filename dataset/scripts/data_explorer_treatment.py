@@ -2,7 +2,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import numpy as np
+# Removed duplicate import of numpy
 from pathlib import Path
 import json
 from tqdm import tqdm

@@ -1,10 +1,34 @@
-dataset/dataset/
-
-#virtual environment
+# 🧠 Virtual environments
 genAIvenv/
 .final_project_env/
 
+# 💻 OS / Editor garbage
+.DS_Store
+.vscode/
 
-.DS_Store   
-
+# 📁 Documentation and project folders
 docs/
+dataset/dataset/
+
+# 🧾 Compiled / output files
+*.pyc
+*.log
+*.zip
+*.tar.gz
+*.mp4
+*.mov
+*.json
+*.png
+
+# 🚫 Large files - models
+models/cache/
+models/cache/*.pkl
+models/embeddings/*.npy
+models/embeddings/*.json
+models/indices/
+models/indices/annoy/*.ann
+
+# 🚫 Redundant catch-all for large file extensions
+*.pkl
+*.npy
+*.ann
