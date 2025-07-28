@@ -1,10 +1,18 @@
 # 🧠 Virtual environments
 genAIvenv/
 .final_project_env/
+.env
+.venv
+env/
+venv/
 
 # 💻 OS / Editor garbage
 .DS_Store
 .vscode/
+*.swp
+*~
+.idea/
+*.iml
 
 # 📁 Documentation and project folders
 docs/
@@ -12,6 +20,7 @@ dataset/dataset/
 
 # 🧾 Compiled / output files
 *.pyc
+__pycache__/
 *.log
 *.zip
 *.tar.gz
@@ -19,6 +28,14 @@ dataset/dataset/
 *.mov
 *.json
 *.png
+
+# 🔑 Secrets and configs
+.env
+.env.local
+.env.*.local
+*.pem
+credentials.json
+token.json
 
 # 🚫 Large files - models
 models/cache/
@@ -32,3 +49,15 @@ models/indices/annoy/*.ann
 *.pkl
 *.npy
 *.ann
+
+# 📊 Jupyter Notebook
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+*.ipynb_checkpoints*
+
+# 📝 Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover

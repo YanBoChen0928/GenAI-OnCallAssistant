@@ -32,13 +32,16 @@ huggingface-hub==0.33.4
 idna==3.10
 Jinja2==3.1.6
 jiter==0.10.0
+joblib==1.5.1
 kiwisolver==1.4.8
 markdown-it-py==3.0.0
 MarkupSafe==3.0.2
 matplotlib==3.10.3
 mdurl==0.1.2
+mpmath==1.3.0
 multidict==6.6.3
 multiprocess==0.70.16
+networkx==3.5
 numpy==2.3.1
 openai==1.97.0
 orjson==3.11.0
@@ -62,6 +65,8 @@ rich==14.0.0
 ruff==0.12.4
 safehttpx==0.1.6
 safetensors==0.5.3
+scikit-learn==1.7.1
+scipy==1.16.1
 seaborn==0.13.2
 semantic-version==2.10.0
 sentence-transformers==3.0.1
@@ -69,8 +74,11 @@ shellingham==1.5.4
 six==1.17.0
 sniffio==1.3.1
 starlette==0.47.2
+sympy==1.14.0
+threadpoolctl==3.6.0
 tokenizers==0.21.2
 tomlkit==0.13.3
+torch==2.7.1
 tqdm==4.67.1
 transformers==4.53.2
 typer==0.16.0
