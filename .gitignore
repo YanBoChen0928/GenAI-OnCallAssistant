@@ -17,6 +17,8 @@ dataset/dataset/
 *.tar.gz
 *.mp4
 *.mov
+*.json
+*.png
 
 # 🚫 Large files - models
 models/cache/
