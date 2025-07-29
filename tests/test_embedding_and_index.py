@@ -20,7 +20,7 @@ print(f"• Current directory: {current_dir}")
 print(f"• Project root: {project_root}")
 print(f"• Python path: {sys.path}")
 
-from data_processing import DataProcessor
+from data_processing import DataProcessor #type: ignore
 
 
 class TestEmbeddingAndIndex:

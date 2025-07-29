@@ -45,7 +45,7 @@ class TestEmbeddingValidation:
         print(f"• Project root: {self.project_root}")
         print(f"• Models directory: {self.models_dir}")
         print(f"• Embeddings directory: {self.embeddings_dir}")
-        
+
         self.logger.info(f"Project root: {self.project_root}")
         self.logger.info(f"Models directory: {self.models_dir}")
         self.logger.info(f"Embeddings directory: {self.embeddings_dir}")
@@ -277,7 +277,7 @@ def main():
     try:
         test.test_embedding_dimensions()
         test.test_multiple_known_item_search()
-        test.test_balanced_cross_dataset_search()
+        test.test_balanced_cross_dataset_search() 
         
         print("\n" + "="*60)
         print("🎉 ALL EMBEDDING VALIDATION TESTS COMPLETED SUCCESSFULLY!")
