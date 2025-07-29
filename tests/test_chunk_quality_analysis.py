@@ -27,7 +27,7 @@ current_dir = Path(__file__).parent.resolve()
 project_root = current_dir.parent
 sys.path.append(str(project_root / "src"))
 
-from data_processing import DataProcessor
+from data_processing import DataProcessor #type: ignore
 
 class TestChunkQualityAnalysis:
     
