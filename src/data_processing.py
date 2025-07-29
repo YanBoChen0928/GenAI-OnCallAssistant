@@ -231,74 +231,89 @@ class DataProcessor:
         return chunks
     
     def create_dual_keyword_chunks(self, text: str, emergency_keywords: str, 
-                                 treatment_keywords: str, chunk_size: int = 512, 
+                                 treatment_keywords: str, chunk_size: int = None, 
                                  doc_id: str = None) -> List[Dict[str, Any]]:
         """
         Create chunks for treatment data with both emergency and treatment keywords
+        使用token-based分離chunking策略，為treatment chunks添加預計算metadata
         
         Args:
             text: Input text
-            emergency_keywords: Emergency keywords
-            treatment_keywords: Treatment keywords
-            chunk_size: Size of each chunk
+            emergency_keywords: Emergency keywords (pipe-separated)
+            treatment_keywords: Treatment keywords (pipe-separated)
+            chunk_size: Size of each chunk in tokens (defaults to self.chunk_size)
             doc_id: Document ID for tracking
             
         Returns:
-            List of chunk dictionaries
+            List of chunk dictionaries with enhanced metadata for treatment chunks
         """
         if not treatment_keywords or pd.isna(treatment_keywords):
             return []
         
         chunks = []
-        em_keywords = emergency_keywords.split("|") if emergency_keywords else []
-        tr_keywords = treatment_keywords.split("|") if treatment_keywords else []
+        chunk_size = chunk_size or self.chunk_size
         
-        # Process treatment keywords as primary (since this is treatment-focused data)
-        for i, tr_keyword in enumerate(tr_keywords):
-            tr_pos = text.lower().find(tr_keyword.lower())
+        # Parse keywords
+        em_kws = emergency_keywords.split('|') if emergency_keywords else []
+        tr_kws = treatment_keywords.split('|') if treatment_keywords else []
+        
+        # Step 1: Process emergency keywords (保持原有格式)
+        if emergency_keywords:
+            em_chunks = self.create_keyword_centered_chunks(
+                text, emergency_keywords, chunk_size, doc_id
+            )
+            # 標記為emergency chunks，保持原有metadata格式
+            for chunk in em_chunks:
+                chunk['source_type'] = 'emergency'
+            chunks.extend(em_chunks)
+        
+        # Step 2: Process treatment keywords (添加新metadata)
+        if treatment_keywords:
+            tr_chunks = self.create_keyword_centered_chunks(
+                text, treatment_keywords, chunk_size, doc_id
+            )
             
-            if tr_pos != -1:
-                # Find closest emergency keyword for context
-                closest_em_keyword = None
-                closest_distance = float('inf')
+            # 為每個treatment chunk添加預計算metadata
+            for i, chunk in enumerate(tr_chunks):
+                chunk_text = chunk['text'].lower()
                 
-                for em_keyword in em_keywords:
-                    em_pos = text.lower().find(em_keyword.lower())
-                    if em_pos != -1:
-                        distance = abs(tr_pos - em_pos)
-                        if distance < closest_distance and distance < chunk_size:
-                            closest_distance = distance
-                            closest_em_keyword = em_keyword
+                # 檢查文本包含的emergency關鍵字
+                contains_emergency_kws = [
+                    kw for kw in em_kws if kw.lower() in chunk_text
+                ]
                 
-                # Calculate chunk boundaries
-                if closest_em_keyword:
-                    # Center between both keywords
-                    em_pos = text.lower().find(closest_em_keyword.lower())
-                    center = (tr_pos + em_pos) // 2
+                # 檢查文本包含的treatment關鍵字
+                contains_treatment_kws = [
+                    kw for kw in tr_kws if kw.lower() in chunk_text
+                ]
+                
+                # 確定匹配類型
+                has_emergency = len(contains_emergency_kws) > 0
+                has_treatment = len(contains_treatment_kws) > 0
+                
+                if has_emergency and has_treatment:
+                    match_type = "both"
+                elif has_emergency:
+                    match_type = "emergency_only"
+                elif has_treatment:
+                    match_type = "treatment_only"
                 else:
-                    # Center on treatment keyword
-                    center = tr_pos
+                    match_type = "none"
                 
-                start = max(0, center - chunk_size // 2)
-                end = min(len(text), center + chunk_size // 2)
-                
-                chunk_text = text[start:end].strip()
-                
-                if chunk_text:
-                    chunk_info = {
-                        "text": chunk_text,
-                        "primary_keyword": tr_keyword,
-                        "emergency_keywords": emergency_keywords,
-                        "treatment_keywords": treatment_keywords,
-                        "closest_emergency_keyword": closest_em_keyword,
-                        "keyword_distance": closest_distance if closest_em_keyword else None,
-                        "chunk_start": start,
-                        "chunk_end": end,
-                        "chunk_id": f"{doc_id}_treatment_chunk_{i}" if doc_id else f"treatment_chunk_{i}",
-                        "source_doc_id": doc_id
-                    }
-                    chunks.append(chunk_info)
+                # 添加預計算metadata (僅treatment chunks)
+                chunk.update({
+                    'source_type': 'treatment',
+                    'contains_emergency_kws': contains_emergency_kws,
+                    'contains_treatment_kws': contains_treatment_kws,
+                    'match_type': match_type,
+                    'emergency_keywords': emergency_keywords,  # 保存原始metadata
+                    'treatment_keywords': treatment_keywords,
+                    'chunk_id': f"{doc_id}_treatment_chunk_{i}" if doc_id else f"treatment_chunk_{i}"
+                })
+            
+            chunks.extend(tr_chunks)
         
+        logger.debug(f"Created {len(chunks)} dual-keyword chunks for document {doc_id or 'unknown'}")
         return chunks
     
     def process_emergency_chunks(self) -> List[Dict[str, Any]]:
