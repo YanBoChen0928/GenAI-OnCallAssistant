@@ -270,7 +270,7 @@ class BasicRetrievalSystem:
             # Combine all results
             all_results = emergency_results + treatment_results
             
-            # Remove duplicates based on distance similarity
+            # Remove duplicates based on exact text matching
             unique_results = self._remove_duplicates(all_results)
             
             # Sort by distance
@@ -289,34 +289,34 @@ class BasicRetrievalSystem:
             logger.error(f"Post-processing failed: {e}")
             raise
             
-    def _remove_duplicates(self, results: List[Dict], distance_threshold: float = 0.1) -> List[Dict]:
+    def _remove_duplicates(self, results: List[Dict]) -> List[Dict]:
         """
-        Remove duplicate results based on distance threshold
+        Remove duplicate results based on exact text matching
         
         Args:
             results: List of search results
-            distance_threshold: Maximum distance difference to consider as duplicate
             
         Returns:
             Deduplicated results with logging statistics
         """
         original_count = len(results)
+        seen_texts = set()
         unique_results = []
         
-        for current in results:
-            is_unique = True
-            current_dist = current["distance"]
-            
-            # Check distance similarity with already kept results
-            for kept in unique_results:
-                if abs(current_dist - kept["distance"]) < distance_threshold:
-                    is_unique = False
-                    break
-            
-            if is_unique:
-                unique_results.append(current)
+        # Sort results by distance (ascending) to keep best matches
+        sorted_results = sorted(results, key=lambda x: x["distance"])
+        
+        logger.info(f"Deduplication: Processing {original_count} results using text matching")
+        
+        for result in sorted_results:
+            text = result["text"]
+            if text not in seen_texts:
+                seen_texts.add(text)
+                unique_results.append(result)
+            else:
+                logger.debug(f"Skipping duplicate text: {text[:50]}...")
         
         final_count = len(unique_results)
-        logger.info(f"Deduplication stats: {original_count} → {final_count} results (removed {original_count - final_count})")
+        logger.info(f"Deduplication summary: {original_count} → {final_count} results (removed {original_count - final_count})")
         
         return unique_results 
