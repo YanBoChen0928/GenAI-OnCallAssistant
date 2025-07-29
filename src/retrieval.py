@@ -195,6 +195,9 @@ class BasicRetrievalSystem:
                 top_k
             )
             
+            # Log individual index results
+            logger.info(f"Search results: Emergency={len(emergency_results)}, Treatment={len(treatment_results)}")
+            
             results = {
                 "query": query,
                 "emergency_results": emergency_results,
@@ -234,7 +237,7 @@ class BasicRetrievalSystem:
         # Format results
         results = []
         for idx, distance in zip(indices, distances):
-            chunk_data = chunks[str(idx)]
+            chunk_data = chunks[idx]  # chunks is a list, use integer index directly
             result = {
                 "type": source_type,  # Using 'type' to match metadata
                 "chunk_id": idx,
@@ -267,7 +270,7 @@ class BasicRetrievalSystem:
             # Combine all results
             all_results = emergency_results + treatment_results
             
-            # Remove duplicates based on text similarity
+            # Remove duplicates based on distance similarity
             unique_results = self._remove_duplicates(all_results)
             
             # Sort by distance
@@ -286,23 +289,34 @@ class BasicRetrievalSystem:
             logger.error(f"Post-processing failed: {e}")
             raise
             
-    def _remove_duplicates(self, results: List[Dict]) -> List[Dict]:
+    def _remove_duplicates(self, results: List[Dict], distance_threshold: float = 0.1) -> List[Dict]:
         """
-        Remove duplicate results based on text similarity
+        Remove duplicate results based on distance threshold
         
         Args:
             results: List of search results
+            distance_threshold: Maximum distance difference to consider as duplicate
             
         Returns:
-            Deduplicated results
+            Deduplicated results with logging statistics
         """
-        seen_texts = set()
+        original_count = len(results)
         unique_results = []
         
-        for result in results:
-            text = result["text"]
-            if text not in seen_texts:
-                seen_texts.add(text)
-                unique_results.append(result)
-                
+        for current in results:
+            is_unique = True
+            current_dist = current["distance"]
+            
+            # Check distance similarity with already kept results
+            for kept in unique_results:
+                if abs(current_dist - kept["distance"]) < distance_threshold:
+                    is_unique = False
+                    break
+            
+            if is_unique:
+                unique_results.append(current)
+        
+        final_count = len(unique_results)
+        logger.info(f"Deduplication stats: {original_count} → {final_count} results (removed {original_count - final_count})")
+        
         return unique_results 
