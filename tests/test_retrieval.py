@@ -102,14 +102,14 @@ class TestRetrievalSystem:
                 processed_results = results["processed_results"]
                 print(f"• Results returned: {len(processed_results)}")
                 
-                # Check result format
-                for j, result in enumerate(processed_results[:3], 1):  # Check first 3
+                # Check result format and display ALL results
+                for j, result in enumerate(processed_results, 1):  # Show ALL results
                     assert "type" in result, f"Result {j} missing 'type' field"
                     assert "text" in result, f"Result {j} missing 'text' field"
                     assert "distance" in result, f"Result {j} missing 'distance' field"
                     assert "chunk_id" in result, f"Result {j} missing 'chunk_id' field"
                     
-                    print(f"  R-{j} [{result['type']}] (distance: {result['distance']:.3f}): {result['text'][:60]}...")
+                    print(f"  R-{j:2d} [{result['type']:9s}] (distance: {result['distance']:.3f}): {result['text'][:80]}...")
                 
                 print(f"✓ Query {i} completed successfully")
                 
@@ -120,13 +120,13 @@ class TestRetrievalSystem:
         print("\n✅ Basic search functionality test passed")
     
     def test_deduplication_logic(self):
-        """Test the new distance-based deduplication logic"""
+        """Test the text-based deduplication logic"""
         print("\n=== Phase 5: Deduplication Logic Test ===")
         
-        # Create test data with similar distances
+        # Create test data with duplicate texts
         test_results = [
             {"text": "Sample text 1", "distance": 0.1, "type": "emergency", "chunk_id": 1},
-            {"text": "Sample text 2", "distance": 0.105, "type": "emergency", "chunk_id": 2},  # Should be considered duplicate
+            {"text": "Sample text 1", "distance": 0.105, "type": "emergency", "chunk_id": 2},  # Duplicate text
             {"text": "Sample text 3", "distance": 0.2, "type": "treatment", "chunk_id": 3},
             {"text": "Sample text 4", "distance": 0.3, "type": "treatment", "chunk_id": 4}
         ]
@@ -136,15 +136,15 @@ class TestRetrievalSystem:
             print(f"  Test-{i}: distance={result['distance']}, type={result['type']}")
         
         # Test deduplication
-        unique_results = self.retrieval._remove_duplicates(test_results, distance_threshold=0.1)
+        unique_results = self.retrieval._remove_duplicates(test_results)
         
         print(f"• After deduplication: {len(unique_results)}")
         for i, result in enumerate(unique_results, 1):
             print(f"  Kept-{i}: distance={result['distance']}, type={result['type']}")
         
         # Verify deduplication worked
-        assert len(unique_results) < len(test_results), "Deduplication should remove some results"
-        print("✓ Distance-based deduplication working correctly")
+        assert len(unique_results) < len(test_results), "Deduplication should remove duplicate texts"
+        print("✓ Text-based deduplication working correctly")
         
         print("✅ Deduplication logic test passed")
     
@@ -191,7 +191,7 @@ def main():
         print("="*60)
         print("✅ System initialization validated")
         print("✅ Basic search functionality confirmed")
-        print("✅ Distance-based deduplication working")
+        print("✅ Text-based deduplication working")
         print("✅ Result statistics and logging verified")
         print("="*60)
         
