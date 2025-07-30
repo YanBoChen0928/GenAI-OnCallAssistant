@@ -34,15 +34,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class UserPromptProcessor:
-    def __init__(self, meditron_client=None, retrieval_system=None):
+    def __init__(self, llm_client=None, retrieval_system=None):
         """
-        Initialize UserPromptProcessor with optional Meditron and retrieval system
+        Initialize UserPromptProcessor with optional LLM and retrieval system
         
         Args:
-            meditron_client: Optional Meditron client for advanced condition extraction
+            llm_client: Optional Llama3-Med42-70B client for advanced condition extraction
             retrieval_system: Optional retrieval system for semantic search
         """
-        self.meditron_client = meditron_client
+        self.llm_client = llm_client
         self.retrieval_system = retrieval_system
         self.embedding_model = SentenceTransformer("NeuML/pubmedbert-base-embeddings")
         
@@ -66,11 +66,11 @@ class UserPromptProcessor:
         if predefined_result:
             return predefined_result
         
-        # Level 2: Meditron Extraction (if available)
-        if self.meditron_client:
-            meditron_result = self._extract_with_meditron(user_query)
-            if meditron_result:
-                return meditron_result
+        # Level 2: Llama3-Med42-70B Extraction (if available)
+        if self.llm_client:
+            llm_result = self._extract_with_llm(user_query)
+            if llm_result:
+                return llm_result
         
         # Level 3: Semantic Search Fallback
         semantic_result = self._semantic_search_fallback(user_query)
@@ -112,9 +112,9 @@ class UserPromptProcessor:
         
         return None
 
-    def _extract_with_meditron(self, user_query: str) -> Optional[Dict[str, str]]:
+    def _extract_with_llm(self, user_query: str) -> Optional[Dict[str, str]]:
         """
-        Use Meditron for advanced condition extraction
+        Use Llama3-Med42-70B for advanced condition extraction
         
         Args:
             user_query: User's medical query
@@ -122,17 +122,17 @@ class UserPromptProcessor:
         Returns:
             Dict with condition and keywords, or None
         """
-        if not self.meditron_client:
+        if not self.llm_client:
             return None
         
         try:
-            meditron_response = self.meditron_client.analyze_medical_query(
+            llama_response = self.llm_client.analyze_medical_query(
                 query=user_query,
                 max_tokens=100,
                 timeout=2.0
             )
             
-            extracted_condition = meditron_response.get('extracted_condition', '')
+            extracted_condition = llama_response.get('extracted_condition', '')
             
             if extracted_condition and validate_condition(extracted_condition):
                 condition_details = get_condition_keywords(extracted_condition)
@@ -145,12 +145,12 @@ class UserPromptProcessor:
             return None
         
         except Exception as e:
-            logger.error(f"Meditron condition extraction error: {e}")
+            logger.error(f"Llama3-Med42-70B condition extraction error: {e}")
             return None
 
     def _semantic_search_fallback(self, user_query: str) -> Optional[Dict[str, str]]:
         """
-        Perform semantic search for condition extraction
+        Perform semantic search for condition extraction using sliding window chunks
         
         Args:
             user_query: User's medical query
@@ -158,31 +158,45 @@ class UserPromptProcessor:
         Returns:
             Dict with condition and keywords, or None
         """
+        logger.info(f"Starting semantic search fallback for query: '{user_query}'")
+        
         if not self.retrieval_system:
+            logger.warning("No retrieval system available for semantic search")
             return None
         
         try:
             # Perform semantic search on sliding window chunks
             semantic_results = self.retrieval_system.search_sliding_window_chunks(user_query)
             
+            logger.info(f"Semantic search returned {len(semantic_results)} results")
+            
             if semantic_results:
                 # Extract condition from top semantic result
                 top_result = semantic_results[0]
                 condition = self._infer_condition_from_text(top_result['text'])
                 
+                logger.info(f"Inferred condition: {condition}")
+                
                 if condition and validate_condition(condition):
                     condition_details = get_condition_keywords(condition)
-                    return {
+                    result = {
                         'condition': condition,
                         'emergency_keywords': condition_details.get('emergency', ''),
                         'treatment_keywords': condition_details.get('treatment', ''),
                         'semantic_confidence': top_result.get('distance', 0)
                     }
+                    
+                    logger.info(f"Semantic search successful. Condition: {condition}, "
+                                f"Confidence: {result['semantic_confidence']}")
+                    return result
+                else:
+                    logger.warning(f"Condition validation failed for: {condition}")
             
+            logger.info("No suitable condition found in semantic search")
             return None
         
         except Exception as e:
-            logger.error(f"Semantic search fallback error: {e}")
+            logger.error(f"Semantic search fallback error: {e}", exc_info=True)
             return None
 
     def _generic_medical_search(self, user_query: str) -> Optional[Dict[str, str]]:
@@ -369,97 +383,162 @@ Please confirm:
             'extracted_info': extracted_info
         }
 
-def validate_medical_query(self, user_query: str) -> Dict[str, Any]:
-    """
-    Validate if the query is a medical-related query using multi-layer verification
-    
-    Args:
-        user_query: User's input query
-    
-    Returns:
-        Dict with validation result or None if medical query
-    """
-    # Expanded medical keywords covering comprehensive medical terminology
-    predefined_medical_keywords = {
-        # Symptoms and signs
-        'pain', 'symptom', 'ache', 'fever', 'inflammation', 
-        'bleeding', 'swelling', 'rash', 'bruise', 'wound',
+    def _handle_matching_failure_level1(self, condition: str) -> Optional[Dict[str, Any]]:
+        """
+        Level 1 Fallback: Loose keyword matching for medical conditions
         
-        # Medical professional terms
-        'disease', 'condition', 'syndrome', 'disorder', 
-        'medical', 'health', 'diagnosis', 'treatment', 
-        'therapy', 'medication', 'prescription',
+        Args:
+            condition: The condition to match loosely
         
-        # Body systems and organs
-        'heart', 'lung', 'brain', 'kidney', 'liver', 
-        'blood', 'nerve', 'muscle', 'bone', 'joint',
+        Returns:
+            Dict with matched keywords or None
+        """
+        # Predefined loose matching keywords for different medical domains
+        loose_medical_keywords = {
+            'emergency': [
+                'urgent', 'critical', 'severe', 'acute', 
+                'immediate', 'life-threatening', 'emergency'
+            ],
+            'treatment': [
+                'manage', 'cure', 'heal', 'recover', 
+                'therapy', 'medication', 'intervention'
+            ]
+        }
         
-        # Medical actions
-        'examine', 'check', 'test', 'scan', 'surgery', 
-        'operation', 'emergency', 'urgent', 'critical',
+        # Normalize condition
+        condition_lower = condition.lower().strip()
         
-        # Specific medical fields
-        'cardiology', 'neurology', 'oncology', 'pediatrics', 
-        'psychiatry', 'dermatology', 'orthopedics'
-    }
-    
-    # Check if query contains predefined medical keywords
-    query_lower = user_query.lower()
-    if any(kw in query_lower for kw in predefined_medical_keywords):
-        return None  # Validated by predefined keywords
-    
-    # Step 2: Use Meditron for final determination
-    try:
-        # Ensure Meditron client is properly initialized
-        if not hasattr(self, 'meditron_client') or self.meditron_client is None:
-            self.logger.warning("Meditron client not initialized")
-            return self._generate_invalid_query_response()
+        # Check emergency keywords
+        emergency_matches = [
+            kw for kw in loose_medical_keywords['emergency'] 
+            if kw in condition_lower
+        ]
         
-        meditron_result = self.meditron_client.analyze_medical_query(
-            query=user_query,
-            max_tokens=100  # Limit tokens for efficiency
-        )
+        # Check treatment keywords
+        treatment_matches = [
+            kw for kw in loose_medical_keywords['treatment'] 
+            if kw in condition_lower
+        ]
         
-        # If Meditron successfully extracts a medical condition
-        if meditron_result.get('extracted_condition'):
-            return None  # Validated by Meditron
+        # If matches found, return result
+        if emergency_matches or treatment_matches:
+            logger.info(f"Loose keyword match for condition: {condition}")
+            return {
+                'type': 'loose_keyword_match',
+                'condition': condition,
+                'emergency_keywords': '|'.join(emergency_matches),
+                'treatment_keywords': '|'.join(treatment_matches),
+                'confidence': 0.5  # Lower confidence due to loose matching
+            }
         
-    except Exception as e:
-        # Log Meditron analysis failure without blocking the process
-        self.logger.warning(f"Meditron query validation failed: {e}")
-    
-    # If no medical relevance is found
-    return self._generate_invalid_query_response()
+        # No loose matches found
+        logger.info(f"No loose keyword match for condition: {condition}")
+        return None
 
-def _generate_invalid_query_response(self) -> Dict[str, Any]:
-    """
-    Generate response for non-medical queries
-    
-    Returns:
-        Dict with invalid query guidance
-    """
-    return {
-        'type': 'invalid_query',
-        'message': "This is OnCall.AI, a clinical medical assistance platform. "
-                   "Please input a medical problem you need help resolving. "
-                   "\n\nExamples:\n"
-                   "- 'I'm experiencing chest pain'\n"
-                   "- 'What are symptoms of stroke?'\n"
-                   "- 'How to manage acute asthma?'\n"
-                   "- 'I have a persistent headache'"
-    }
+    def validate_medical_query(self, user_query: str) -> Dict[str, Any]:
+        """
+        Validate if the query is a medical-related query using Llama3-Med42-70B multi-layer verification
+        
+        Args:
+            user_query: User's input query
+        
+        Returns:
+            Dict with validation result or None if medical query
+        """
+        # Expanded medical keywords covering comprehensive medical terminology
+        predefined_medical_keywords = {
+            # Symptoms and signs
+            'pain', 'symptom', 'ache', 'fever', 'inflammation', 
+            'bleeding', 'swelling', 'rash', 'bruise', 'wound',
+            
+            # Medical professional terms
+            'disease', 'condition', 'syndrome', 'disorder', 
+            'medical', 'health', 'diagnosis', 'treatment', 
+            'therapy', 'medication', 'prescription',
+            
+            # Body systems and organs
+            'heart', 'lung', 'brain', 'kidney', 'liver', 
+            'blood', 'nerve', 'muscle', 'bone', 'joint',
+            
+            # Medical actions
+            'examine', 'check', 'test', 'scan', 'surgery', 
+            'operation', 'emergency', 'urgent', 'critical',
+            
+            # Specific medical fields
+            'cardiology', 'neurology', 'oncology', 'pediatrics', 
+            'psychiatry', 'dermatology', 'orthopedics'
+        }
+        
+        # Check if query contains predefined medical keywords
+        query_lower = user_query.lower()
+        if any(kw in query_lower for kw in predefined_medical_keywords):
+            return None  # Validated by predefined keywords
+        
+        try:
+            # Ensure Llama3-Med42-70B client is properly initialized
+            if not hasattr(self, 'llm_client') or self.llm_client is None:
+                self.logger.warning("Llama3-Med42-70B client not initialized")
+                return self._generate_invalid_query_response()
+            
+            # Use Llama3-Med42-70B for final medical query determination
+            llama_result = self.llm_client.analyze_medical_query(
+                query=user_query,
+                max_tokens=100  # Limit tokens for efficiency
+            )
+            
+            # If Llama3-Med42-70B successfully extracts a medical condition
+            if llama_result.get('extracted_condition'):
+                return None  # Validated by Llama3-Med42-70B
+            
+        except Exception as e:
+            # Log Llama3-Med42-70B analysis failure without blocking the process
+            self.logger.warning(f"Llama3-Med42-70B query validation failed: {e}")
+        
+        # If no medical relevance is found
+        return self._generate_invalid_query_response()
+
+    def _generate_invalid_query_response(self) -> Dict[str, Any]:
+        """
+        Generate response for non-medical queries
+        
+        Returns:
+            Dict with invalid query guidance
+        """
+        return {
+            'type': 'invalid_query',
+            'message': "This is OnCall.AI, a clinical medical assistance platform. "
+                       "Please input a medical problem you need help resolving. "
+                       "\n\nExamples:\n"
+                       "- 'I'm experiencing chest pain'\n"
+                       "- 'What are symptoms of stroke?'\n"
+                       "- 'How to manage acute asthma?'\n"
+                       "- 'I have a persistent headache'"
+        }
 
 def main():
     """
-    Example usage and testing of UserPromptProcessor
+    Example usage and testing of UserPromptProcessor with Llama3-Med42-70B
+    Demonstrates condition extraction and query validation
     """
-    processor = UserPromptProcessor()
+    from .retrieval import BasicRetrievalSystem
+
+    # use relative import to avoid circular import
+    from .llm_clients import llm_Med42_70BClient
     
-    # Test cases
+    # Initialize LLM client
+    llm_client = llm_Med42_70BClient()
+    retrieval_system = BasicRetrievalSystem()
+    
+    # Initialize UserPromptProcessor with the LLM client
+    processor = UserPromptProcessor(
+        llm_client=llm_client, retrieval_system=retrieval_system
+    )
+    
+    # Update test cases with more representative medical queries
     test_queries = [
-        "how to treat acute MI?",
-        "patient with stroke symptoms",
-        "chest pain and breathing difficulty"
+        "patient with severe chest pain and shortness of breath",
+        "sudden neurological symptoms suggesting stroke",
+        "persistent headache with vision changes"
     ]
     
     for query in test_queries:

@@ -37,6 +37,7 @@ __pycache__/
 *.pem
 credentials.json
 token.json
+*.mdc
 
 # 🚫 Large files - models
 models/cache/

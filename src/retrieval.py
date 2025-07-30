@@ -369,3 +369,21 @@ class BasicRetrievalSystem:
         except Exception as e:
             logger.error(f"Sliding window search failed: {e}")
             return [] 
+
+    def search_generic_medical_content(self, query: str, top_k: int = 5) -> List[Dict]:
+        """
+        Perform generic medical content search
+        
+        Args:
+            query: Search query
+            top_k: Number of top results to return
+        
+        Returns:
+            List of search results
+        """
+        try:
+            # re-use search_sliding_window_chunks method
+            return self.search_sliding_window_chunks(query, top_k=top_k)
+        except Exception as e:
+            logger.error(f"Generic medical content search error: {e}")
+            return [] 
