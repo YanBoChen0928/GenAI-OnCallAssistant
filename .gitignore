@@ -17,6 +17,7 @@ venv/
 # 📁 Documentation and project folders
 docs/
 dataset/dataset/
+cache/
 
 # 🧾 Compiled / output files
 *.pyc
