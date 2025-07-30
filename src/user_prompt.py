@@ -15,6 +15,9 @@ import logging
 from typing import Dict, Optional, Any, List
 from sentence_transformers import SentenceTransformer
 import numpy as np # Added missing import for numpy
+import os # Added missing import for os
+import json # Added missing import for json
+import re # Added missing import for re
 
 # Import our centralized medical conditions configuration
 from medical_conditions import (
@@ -42,6 +45,10 @@ class UserPromptProcessor:
         self.meditron_client = meditron_client
         self.retrieval_system = retrieval_system
         self.embedding_model = SentenceTransformer("NeuML/pubmedbert-base-embeddings")
+        
+        # Add embeddings directory path
+        self.embeddings_dir = os.path.join(os.path.dirname(__file__), '..', 'models', 'embeddings')
+        
         logger.info("UserPromptProcessor initialized")
 
     def extract_condition_keywords(self, user_query: str) -> Dict[str, str]:
@@ -254,6 +261,72 @@ class UserPromptProcessor:
         # Basic validation: check if any keyword is non-empty
         return any(kw.strip() for kw in emergency_kws + treatment_kws)
 
+    def _check_keyword_in_index(self, keyword: str, index_type: str) -> bool:
+        """
+        Check if a keyword exists in the specified medical index
+        
+        Args:
+            keyword: Keyword to check
+            index_type: Type of index ('emergency' or 'treatment')
+        
+        Returns:
+            Boolean indicating keyword existence in the index
+        """
+        # Validate input parameters
+        if not keyword or not index_type:
+            logger.warning(f"Invalid input: keyword='{keyword}', index_type='{index_type}'")
+            return False
+        
+        # Supported index types
+        valid_index_types = ['emergency', 'treatment']
+        if index_type not in valid_index_types:
+            logger.error(f"Unsupported index type: {index_type}")
+            return False
+        
+        try:
+            # Construct path to chunks file
+            chunks_path = os.path.join(self.embeddings_dir, f"{index_type}_chunks.json")
+            
+            # Check file existence
+            if not os.path.exists(chunks_path):
+                logger.error(f"Index file not found: {chunks_path}")
+                return False
+            
+            # Load chunks with error handling
+            with open(chunks_path, 'r', encoding='utf-8') as f:
+                chunks = json.load(f)
+            
+            # Normalize keyword for flexible matching
+            keyword_lower = keyword.lower().strip()
+            
+            # Advanced keyword matching
+            for chunk in chunks:
+                chunk_text = chunk.get('text', '').lower()
+                
+                # Exact match
+                if keyword_lower in chunk_text:
+                    logger.info(f"Exact match found for '{keyword}' in {index_type} index")
+                    return True
+                
+                # Partial match with word boundaries
+                if re.search(r'\b' + re.escape(keyword_lower) + r'\b', chunk_text):
+                    logger.info(f"Partial match found for '{keyword}' in {index_type} index")
+                    return True
+            
+            # No match found
+            logger.info(f"No match found for '{keyword}' in {index_type} index")
+            return False
+        
+        except json.JSONDecodeError:
+            logger.error(f"Invalid JSON in {chunks_path}")
+            return False
+        except IOError as e:
+            logger.error(f"IO error reading {chunks_path}: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error in _check_keyword_in_index: {e}")
+            return False
+
     def handle_user_confirmation(self, extracted_info: Dict[str, str]) -> Dict[str, Any]:
         """
         Handle user confirmation for extracted condition and keywords
@@ -295,6 +368,86 @@ Please confirm:
             'message': confirmation_message,
             'extracted_info': extracted_info
         }
+
+def validate_medical_query(self, user_query: str) -> Dict[str, Any]:
+    """
+    Validate if the query is a medical-related query using multi-layer verification
+    
+    Args:
+        user_query: User's input query
+    
+    Returns:
+        Dict with validation result or None if medical query
+    """
+    # Expanded medical keywords covering comprehensive medical terminology
+    predefined_medical_keywords = {
+        # Symptoms and signs
+        'pain', 'symptom', 'ache', 'fever', 'inflammation', 
+        'bleeding', 'swelling', 'rash', 'bruise', 'wound',
+        
+        # Medical professional terms
+        'disease', 'condition', 'syndrome', 'disorder', 
+        'medical', 'health', 'diagnosis', 'treatment', 
+        'therapy', 'medication', 'prescription',
+        
+        # Body systems and organs
+        'heart', 'lung', 'brain', 'kidney', 'liver', 
+        'blood', 'nerve', 'muscle', 'bone', 'joint',
+        
+        # Medical actions
+        'examine', 'check', 'test', 'scan', 'surgery', 
+        'operation', 'emergency', 'urgent', 'critical',
+        
+        # Specific medical fields
+        'cardiology', 'neurology', 'oncology', 'pediatrics', 
+        'psychiatry', 'dermatology', 'orthopedics'
+    }
+    
+    # Check if query contains predefined medical keywords
+    query_lower = user_query.lower()
+    if any(kw in query_lower for kw in predefined_medical_keywords):
+        return None  # Validated by predefined keywords
+    
+    # Step 2: Use Meditron for final determination
+    try:
+        # Ensure Meditron client is properly initialized
+        if not hasattr(self, 'meditron_client') or self.meditron_client is None:
+            self.logger.warning("Meditron client not initialized")
+            return self._generate_invalid_query_response()
+        
+        meditron_result = self.meditron_client.analyze_medical_query(
+            query=user_query,
+            max_tokens=100  # Limit tokens for efficiency
+        )
+        
+        # If Meditron successfully extracts a medical condition
+        if meditron_result.get('extracted_condition'):
+            return None  # Validated by Meditron
+        
+    except Exception as e:
+        # Log Meditron analysis failure without blocking the process
+        self.logger.warning(f"Meditron query validation failed: {e}")
+    
+    # If no medical relevance is found
+    return self._generate_invalid_query_response()
+
+def _generate_invalid_query_response(self) -> Dict[str, Any]:
+    """
+    Generate response for non-medical queries
+    
+    Returns:
+        Dict with invalid query guidance
+    """
+    return {
+        'type': 'invalid_query',
+        'message': "This is OnCall.AI, a clinical medical assistance platform. "
+                   "Please input a medical problem you need help resolving. "
+                   "\n\nExamples:\n"
+                   "- 'I'm experiencing chest pain'\n"
+                   "- 'What are symptoms of stroke?'\n"
+                   "- 'How to manage acute asthma?'\n"
+                   "- 'I have a persistent headache'"
+    }
 
 def main():
     """
