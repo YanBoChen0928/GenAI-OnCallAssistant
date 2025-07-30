@@ -9,91 +9,71 @@ Date: 2025-07-29
 
 import logging
 import os
-from typing import Dict, Optional
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from typing import Dict, Optional, Union
 from huggingface_hub import InferenceClient
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
 
-class MeditronClient:
+class llm_Med42_70BClient:
     def __init__(
         self, 
-        model_name: str = "TheBloke/meditron-7B-GPTQ",
-        local_model_path: Optional[str] = None,
-        use_local: bool = False,
+        model_name: str = "m42-health/Llama3-Med42-70B",
         timeout: float = 30.0
     ):
         """
-        Initialize Meditron client for medical query processing.
+        Initialize Medical LLM client for query processing.
         
         Args:
             model_name: Hugging Face model name
-            local_model_path: Path to local model files
-            use_local: Flag to use local model
             timeout: API call timeout duration
         
         Warning: This model should not be used for professional medical advice.
         """
         self.logger = logging.getLogger(__name__)
         self.timeout = timeout
-        self.use_local = use_local
         
-        if use_local:
-            if not local_model_path:
-                raise ValueError("local_model_path must be provided when use_local is True")
+        # Configure logging to show detailed information
+        logging.basicConfig(
+            level=logging.INFO, 
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        
+        # Get Hugging Face token from environment
+        hf_token = os.getenv('HF_TOKEN')
+        if not hf_token:
+            self.logger.error("HF_TOKEN is missing from environment variables.")
+            raise ValueError(
+                "HF_TOKEN not found in environment variables. "
+                "Please set HF_TOKEN in your .env file or environment. "
+                "Ensure the token is not empty and is correctly set."
+            )
+        
+        try:
+            # Initialize InferenceClient with the new model
+            self.client = InferenceClient(
+                provider="featherless-ai", 
+                api_key=hf_token
+            )
             
-            try:
-                # Load local model using Hugging Face transformers
-                self.tokenizer = AutoTokenizer.from_pretrained(
-                    model_name, 
-                    local_files_only=True, 
-                    cache_dir=local_model_path
-                )
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    model_name,
-                    local_files_only=True,
-                    cache_dir=local_model_path,
-                    device_map="auto",
-                    torch_dtype=torch.float16
-                )
-                
-                self.logger.info(f"Local Meditron model loaded from: {local_model_path}")
-                self.logger.warning(
-                    "Meditron Model: Research tool only. "
-                    "Not for professional medical diagnosis."
-                )
-            except Exception as e:
-                self.logger.error(f"Failed to load local model: {str(e)}")
-                raise ValueError(f"Failed to initialize local Meditron client: {str(e)}")
-        else:
-            # Existing InferenceClient logic
-            hf_token = os.getenv('HF_TOKEN')
-            if not hf_token:
-                raise ValueError(
-                    "HF_TOKEN not found in environment variables. "
-                    "Please set HF_TOKEN in your .env file or environment."
-                )
-            
-            try:
-                self.client = InferenceClient(model=model_name, token=hf_token)
-                self.logger.info(f"Meditron client initialized with model: {model_name}")
-                self.logger.warning(
-                    "Meditron Model: Research tool only. "
-                    "Not for professional medical diagnosis."
-                )
-            except Exception as e:
-                self.logger.error(f"Failed to initialize InferenceClient: {str(e)}")
-                raise ValueError(f"Failed to initialize Meditron client: {str(e)}")
+            self.logger.info(f"Medical LLM client initialized with model: {model_name}")
+            self.logger.warning(
+                "Medical LLM Model: Research tool only. "
+                "Not for professional medical diagnosis."
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to initialize InferenceClient: {str(e)}")
+            self.logger.error(f"Error Type: {type(e).__name__}")
+            self.logger.error(f"Detailed Error: {repr(e)}")
+            raise ValueError(f"Failed to initialize Medical LLM client: {str(e)}") from e
 
     def analyze_medical_query(
         self, 
         query: str, 
         max_tokens: int = 100, 
         timeout: Optional[float] = None
-    ) -> Dict[str, str]:
+    ) -> Dict[str, Union[str, float]]:
         """
         Analyze medical query and extract condition.
         
@@ -103,82 +83,74 @@ class MeditronClient:
             timeout: Specific API call timeout
         
         Returns:
-            Extracted medical condition information
+            Extracted medical condition information with latency
         """
+        import time
+        
+        # Start timing
+        start_time = time.time()
+        
         try:
-            # ChatML style prompt for Meditron
-            prompt = f"""<|im_start|>system
-You are a professional medical assistant trained to extract medical conditions. 
-Provide only the most representative condition name.
-DO NOT provide medical advice.
-<|im_end|>
-<|im_start|>user
-{query}
-<|im_end|>
-<|im_start|>assistant
-"""
+            self.logger.info(f"Calling Medical LLM with query: {query}")
             
-            self.logger.info(f"Calling Meditron with query: {query}")
-            
-            if self.use_local:
-                # Local model inference
-                input_ids = self.tokenizer(prompt, return_tensors='pt').input_ids.to(self.model.device)
-                
-                response = self.model.generate(
-                    input_ids, 
-                    max_new_tokens=max_tokens, 
-                    temperature=0.7, 
-                    do_sample=True, 
-                    top_k=50
-                )
-                
-                response_text = self.tokenizer.decode(response[0], skip_special_tokens=True)
-                self.logger.info(f"Local model response: {response_text}")
-            else:
-                # InferenceClient inference
-                self.logger.info(f"Using model: {self.client.model}")
-                
-                # Test API connection first
-                try:
-                    test_response = self.client.text_generation(
-                        "Hello",
-                        max_new_tokens=5,
-                        temperature=0.7,
-                        top_k=50
-                    )
-                    self.logger.info("API connection test successful")
-                except Exception as test_error:
-                    self.logger.error(f"API connection test failed: {str(test_error)}")
-                    return {
-                        'extracted_condition': '',
-                        'confidence': 0,
-                        'error': f"API connection failed: {str(test_error)}"
+            # Prepare chat completion request
+            response = self.client.chat.completions.create(
+                model="m42-health/Llama3-Med42-70B",
+                messages=[
+                    {
+                        "role": "system", 
+                        "content": "You are a professional medical assistant trained to extract medical conditions. Provide only the most representative condition name. DO NOT provide medical advice."
+                    },
+                    {
+                        "role": "user", 
+                        "content": query
                     }
-                
-                response_text = self.client.text_generation(
-                    prompt,
-                    max_new_tokens=max_tokens,
-                    temperature=0.7,
-                    top_k=50
-                )
+                ],
+                max_tokens=max_tokens
+            )
+            
+            # Calculate latency
+            end_time = time.time()
+            latency = end_time - start_time
+            
+            # Extract the response text
+            response_text = response.choices[0].message.content or ""
+            
+            # Log raw response and latency
+            self.logger.info(f"Raw LLM Response: {response_text}")
+            self.logger.info(f"Query Latency: {latency:.4f} seconds")
             
             # Extract condition from response
             extracted_condition = self._extract_condition(response_text)
             
+            # Log the extracted condition
+            self.logger.info(f"Extracted Condition: {extracted_condition}")
+            
             return {
                 'extracted_condition': extracted_condition,
-                'confidence': 0.8,
-                'raw_response': response_text
+                'confidence': '0.8',
+                'raw_response': response_text,
+                'latency': latency  # Add latency to the return dictionary
             }
         
         except Exception as e:
-            self.logger.error(f"Meditron query error: {str(e)}")
-            self.logger.error(f"Error type: {type(e).__name__}")
-            self.logger.error(f"Error details: {repr(e)}")
+            # Calculate latency even for failed requests
+            end_time = time.time()
+            latency = end_time - start_time
+            
+            self.logger.error(f"Medical LLM query error: {str(e)}")
+            self.logger.error(f"Error Type: {type(e).__name__}")
+            self.logger.error(f"Detailed Error: {repr(e)}")
+            self.logger.error(f"Query Latency (on error): {latency:.4f} seconds")
+            
+            # Additional context logging
+            self.logger.error(f"Query that caused error: {query}")
+            
             return {
                 'extracted_condition': '',
-                'confidence': 0,
-                'error': f"{type(e).__name__}: {str(e)}"
+                'confidence': '0',
+                'error': str(e),
+                'latency': latency  # Include latency even for error cases
             }
 
     def _extract_condition(self, response: str) -> str:
@@ -193,26 +165,29 @@ DO NOT provide medical advice.
         """
         from medical_conditions import CONDITION_KEYWORD_MAPPING
         
-        # Remove prompt parts, keep only generated content
-        generated_text = response.split('<|im_start|>assistant\n')[-1].strip()
-        
         # Search in known medical conditions
         for condition in CONDITION_KEYWORD_MAPPING.keys():
-            if condition.lower() in generated_text.lower():
+            if condition.lower() in response.lower():
                 return condition
         
-        return generated_text.split('\n')[0].strip()
+        return response.split('\n')[0].strip() or ""
 
 def main():
     """
-    Test Meditron client functionality
+    Test Medical LLM client functionality
     """
+    import time
+    from datetime import datetime
+
+    # Record total execution start time
+    total_start_time = time.time()
+    execution_start_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
     try:
-        # Test local model loading
-        client = MeditronClient(
-            local_model_path="/Users/yanbochen/Documents/Life in Canada/CS study related/*Student Course, Guide/CS7180 GenAI/FinalProject_git_copy/models/cache/meditron-7B-GPTQ", 
-            use_local=True
-        )
+        print(f"Execution Started at: {execution_start_timestamp}")
+        
+        # Test client initialization
+        client = llm_Med42_70BClient()
         
         test_queries = [
             "patient experiencing chest pain",
@@ -220,24 +195,66 @@ def main():
             "severe headache with neurological symptoms"
         ]
         
+        # Store individual query results
+        query_results = []
+        
         for query in test_queries:
             print(f"\nTesting query: {query}")
             result = client.analyze_medical_query(query)
-            print("Extracted Condition:", result['extracted_condition'])
-            print("Confidence:", result['confidence'])
+            
+            # Store query result
+            query_result = {
+                'query': query,
+                'extracted_condition': result.get('extracted_condition', 'N/A'),
+                'confidence': result.get('confidence', 'N/A'),
+                'latency': result.get('latency', 'N/A')
+            }
+            query_results.append(query_result)
+            
+            # Print individual query results
+            print("Extracted Condition:", query_result['extracted_condition'])
+            print("Confidence:", query_result['confidence'])
+            print(f"Latency: {query_result['latency']:.4f} seconds")
+            
             if 'error' in result:
                 print("Error:", result['error'])
             print("---")
+        
+        # Calculate total execution time
+        total_end_time = time.time()
+        total_execution_time = total_end_time - total_start_time
+        execution_end_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Print summary
+        print("\n--- Execution Summary ---")
+        print(f"Execution Started at: {execution_start_timestamp}")
+        print(f"Execution Ended at: {execution_end_timestamp}")
+        print(f"Total Execution Time: {total_execution_time:.4f} seconds")
+        
+        # Optional: Return results for potential further processing
+        return {
+            'start_time': execution_start_timestamp,
+            'end_time': execution_end_timestamp,
+            'total_execution_time': total_execution_time,
+            'query_results': query_results
+        }
             
     except Exception as e:
         print(f"Client initialization error: {str(e)}")
-        print("This might be due to:")
-        print("1. Incorrect local model path")
-        print("2. Missing dependencies")
-        print("3. Hardware limitations")
-        print("\nTo fix:")
-        print("1. Verify local model path")
-        print("2. Install required dependencies")
+        print("Possible issues:")
+        print("1. Invalid or missing Hugging Face token")
+        print("2. Network connectivity problems")
+        print("3. Model access restrictions")
+        print("\nPlease check your .env file and Hugging Face token.")
+        
+        # Calculate total execution time even in case of error
+        total_end_time = time.time()
+        total_execution_time = total_end_time - total_start_time
+        
+        return {
+            'error': str(e),
+            'total_execution_time': total_execution_time
+        }
 
 if __name__ == "__main__":
     main()

@@ -26,7 +26,7 @@ CONDITION_KEYWORD_MAPPING: Dict[str, Dict[str, str]] = {
         "emergency": "chest pain|shortness of breath|sudden dyspnea",
         "treatment": "anticoagulation|heparin|embolectomy"
     },
-    # 從 @20250729Test_Retrieval.md 擴展的條件
+    # extended from @20250729Test_Retrieval.md 
     "acute_ischemic_stroke": {
         "emergency": "ischemic stroke|neurological deficit",
         "treatment": "tPA|stroke unit management"
