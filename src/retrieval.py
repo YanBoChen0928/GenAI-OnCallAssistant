@@ -320,3 +320,52 @@ class BasicRetrievalSystem:
         logger.info(f"Deduplication summary: {original_count} → {final_count} results (removed {original_count - final_count})")
         
         return unique_results 
+
+    def search_sliding_window_chunks(self, query: str, top_k: int = 5, window_size: int = 256, overlap: int = 64) -> List[Dict[str, Any]]:
+        """
+        Perform semantic search using sliding window chunks
+        
+        Args:
+            query: Search query
+            top_k: Number of top results to return
+            window_size: Size of sliding window chunks
+            overlap: Overlap between sliding windows
+        
+        Returns:
+            List of search results with sliding window chunks
+        """
+        try:
+            # Get query embedding
+            query_embedding = self.embedding_model.encode([query])[0]
+            
+            # Combine emergency and treatment chunks
+            all_chunks = self.emergency_chunks + self.treatment_chunks
+            all_embeddings = np.vstack([self.emergency_embeddings, self.treatment_embeddings])
+            
+            # Compute cosine similarities
+            similarities = [
+                np.dot(query_embedding, chunk_emb) / 
+                (np.linalg.norm(query_embedding) * np.linalg.norm(chunk_emb))
+                for chunk_emb in all_embeddings
+            ]
+            
+            # Sort results by similarity
+            sorted_indices = np.argsort(similarities)[::-1]
+            
+            # Prepare results
+            results = []
+            for idx in sorted_indices[:top_k]:
+                chunk = all_chunks[idx]
+                result = {
+                    'text': chunk.get('text', ''),
+                    'distance': similarities[idx],
+                    'type': 'emergency' if idx < len(self.emergency_chunks) else 'treatment'
+                }
+                results.append(result)
+            
+            logger.info(f"Sliding window search: Found {len(results)} results")
+            return results
+        
+        except Exception as e:
+            logger.error(f"Sliding window search failed: {e}")
+            return [] 
