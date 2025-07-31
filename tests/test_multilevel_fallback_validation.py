@@ -292,7 +292,23 @@ class MultilevelFallbackTest:
         return result
     
     def _detect_fallback_level(self, condition_result: Dict[str, Any]) -> int:
-        """Detect which fallback level was used based on the result"""
+        """
+        Detect which fallback level was used based on the condition result.
+
+        Fallback levels:
+        0: No result or unknown fallback level.
+        1: Predefined Mapping (Fast Path) - The condition matches a predefined mapping.
+        2: Llama3-Med42-70B Extraction - The condition is extracted by the LLM.
+        3: Semantic Search Fallback - The result includes a semantic confidence score.
+        4: Medical Query Validation - The query is deemed invalid (e.g., 'invalid_query').
+        5: Generic Medical Search - The condition is identified as a generic medical query.
+
+        Args:
+            condition_result (Dict[str, Any]): The result of the condition extraction process.
+
+        Returns:
+            int: The detected fallback level (0-5).
+        """
         if not condition_result:
             return 0  # No result
         
