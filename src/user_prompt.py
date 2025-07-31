@@ -61,6 +61,7 @@ class UserPromptProcessor:
         Returns:
             Dict with condition and keywords
         """
+ 
         # Level 1: Predefined Mapping (Fast Path)
         predefined_result = self._predefined_mapping(user_query)
         if predefined_result:
@@ -77,12 +78,19 @@ class UserPromptProcessor:
         if semantic_result:
             return semantic_result
         
-        # Level 4: Generic Medical Search
+        # Level 4: Medical Query Validation
+        # Only validate if previous levels failed - speed optimization
+        validation_result = self.validate_medical_query(user_query)
+        if validation_result:  # If validation fails (returns non-None)
+            return validation_result
+        
+        # Level 5: Generic Medical Search (after validation passes)
         generic_result = self._generic_medical_search(user_query)
         if generic_result:
             return generic_result
         
         # No match found
+        
         return {
             'condition': '',
             'emergency_keywords': '',
@@ -230,8 +238,7 @@ class UserPromptProcessor:
                     'generic_confidence': 0.5
                 }
             
-            return None
-        
+            return None 
         except Exception as e:
             logger.error(f"Generic medical search error: {e}")
             return None
