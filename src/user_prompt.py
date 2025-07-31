@@ -22,7 +22,7 @@ import re # Added missing import for re
 # Import our centralized medical conditions configuration
 from medical_conditions import (
     CONDITION_KEYWORD_MAPPING, 
-    get_condition_keywords, 
+    get_condition_details, 
     validate_condition
 )
 
@@ -135,12 +135,13 @@ class UserPromptProcessor:
             extracted_condition = llama_response.get('extracted_condition', '')
             
             if extracted_condition and validate_condition(extracted_condition):
-                condition_details = get_condition_keywords(extracted_condition)
-                return {
-                    'condition': extracted_condition,
-                    'emergency_keywords': condition_details.get('emergency', ''),
-                    'treatment_keywords': condition_details.get('treatment', '')
-                }
+                condition_details = get_condition_details(extracted_condition)
+                if condition_details:
+                    return {
+                        'condition': extracted_condition,
+                        'emergency_keywords': condition_details.get('emergency', ''),
+                        'treatment_keywords': condition_details.get('treatment', '')
+                    }
             
             return None
         
@@ -178,13 +179,14 @@ class UserPromptProcessor:
                 logger.info(f"Inferred condition: {condition}")
                 
                 if condition and validate_condition(condition):
-                    condition_details = get_condition_keywords(condition)
-                    result = {
-                        'condition': condition,
-                        'emergency_keywords': condition_details.get('emergency', ''),
-                        'treatment_keywords': condition_details.get('treatment', ''),
-                        'semantic_confidence': top_result.get('distance', 0)
-                    }
+                    condition_details = get_condition_details(condition)
+                    if condition_details:
+                        result = {
+                            'condition': condition,
+                            'emergency_keywords': condition_details.get('emergency', ''),
+                            'treatment_keywords': condition_details.get('treatment', ''),
+                            'semantic_confidence': top_result.get('distance', 0)
+                        }
                     
                     logger.info(f"Semantic search successful. Condition: {condition}, "
                                 f"Confidence: {result['semantic_confidence']}")
