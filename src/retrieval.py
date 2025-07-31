@@ -56,7 +56,9 @@ class BasicRetrievalSystem:
             self.treatment_index = AnnoyIndex(self.embedding_dim, 'angular')
             
             # Load data
-            base_path = Path("models")
+            current_file = Path(__file__)
+            project_root = current_file.parent.parent  # from src to root
+            base_path = project_root / "models"
             self._load_chunks(base_path)
             self._load_embeddings(base_path)
             self._build_or_load_indices(base_path)
