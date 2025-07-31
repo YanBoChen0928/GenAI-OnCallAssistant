@@ -106,7 +106,7 @@ class DataProcessor:
             raise FileNotFoundError(f"Treatment data not found: {treatment_path}")
         
         # Load data
-        self.emergency_data = pd.read_json(str(emergency_path), lines=True)  # 使用 str() 确保路径正确处理
+        self.emergency_data = pd.read_json(str(emergency_path), lines=True)  # use str() to ensure path is correct
         self.treatment_data = pd.read_json(str(treatment_path), lines=True)
         
         logger.info(f"Loaded {len(self.emergency_data)} emergency records")
@@ -167,11 +167,8 @@ class DataProcessor:
                 # Get the keyword text (already lowercase)
                 actual_keyword = text[keyword_pos:keyword_pos + len(keyword)]
                 
-                # Calculate rough window size using dynamic ratio
-                # Cap the rough chunk target token size to prevent tokenizer warnings
-                # Use 512 tokens as target (model's max limit)
-                ROUGH_CHUNK_TARGET_TOKENS = 512
-                char_window = int(ROUGH_CHUNK_TARGET_TOKENS * chars_per_token / 2)
+                # Calculate rough window size using simple ratio
+                char_window = int(chunk_size * chars_per_token / 2)
                 
                 # Get rough chunk boundaries in characters
                 rough_start = max(0, keyword_pos - char_window)
@@ -231,73 +228,119 @@ class DataProcessor:
         return chunks
     
     def create_dual_keyword_chunks(self, text: str, emergency_keywords: str, 
-                                 treatment_keywords: str, chunk_size: int = 512, 
+                                 treatment_keywords: str, chunk_size: int = None, 
                                  doc_id: str = None) -> List[Dict[str, Any]]:
         """
         Create chunks for treatment data with both emergency and treatment keywords
+        using token-based separate chunking strategy with enhanced metadata for treatment chunks
         
         Args:
             text: Input text
-            emergency_keywords: Emergency keywords
-            treatment_keywords: Treatment keywords
-            chunk_size: Size of each chunk
+            emergency_keywords: Emergency keywords (pipe-separated)
+            treatment_keywords: Treatment keywords (pipe-separated)
+            chunk_size: Size of each chunk in tokens (defaults to self.chunk_size)
             doc_id: Document ID for tracking
             
         Returns:
-            List of chunk dictionaries
+            List of chunk dictionaries with enhanced metadata for treatment chunks
         """
-        if not treatment_keywords or pd.isna(treatment_keywords):
-            return []
-        
         chunks = []
-        em_keywords = emergency_keywords.split("|") if emergency_keywords else []
-        tr_keywords = treatment_keywords.split("|") if treatment_keywords else []
+        chunk_size = chunk_size or self.chunk_size
         
-        # Process treatment keywords as primary (since this is treatment-focused data)
-        for i, tr_keyword in enumerate(tr_keywords):
-            tr_pos = text.lower().find(tr_keyword.lower())
+        # Case 1: No keywords present
+        if not emergency_keywords and not treatment_keywords:
+            return []
             
-            if tr_pos != -1:
-                # Find closest emergency keyword for context
-                closest_em_keyword = None
-                closest_distance = float('inf')
+        # Case 2: Only emergency keywords (early return)
+        if emergency_keywords and not treatment_keywords:
+            em_chunks = self.create_keyword_centered_chunks(
+                text=text,
+                matched_keywords=emergency_keywords,
+                chunk_size=chunk_size,
+                doc_id=doc_id
+            )
+            for chunk in em_chunks:
+                chunk['source_type'] = 'emergency'
+            return em_chunks
+        
+        # Case 3: Only treatment keywords (early return)
+        if treatment_keywords and not emergency_keywords:
+            tr_chunks = self.create_keyword_centered_chunks(
+                text=text,
+                matched_keywords=treatment_keywords,
+                chunk_size=chunk_size,
+                doc_id=doc_id
+            )
+            for chunk in tr_chunks:
+                chunk['source_type'] = 'treatment'
+                chunk['contains_treatment_kws'] = treatment_keywords.split('|')
+                chunk['contains_emergency_kws'] = []
+                chunk['match_type'] = 'treatment_only'
+            return tr_chunks
+        
+        # Case 4: Both keywords present - separate processing
+        # Process emergency keywords
+        if emergency_keywords:
+            em_chunks = self.create_keyword_centered_chunks(
+                text=text,
+                matched_keywords=emergency_keywords,
+                chunk_size=chunk_size,
+                doc_id=doc_id
+            )
+            for chunk in em_chunks:
+                chunk['source_type'] = 'emergency'
+            chunks.extend(em_chunks)
+        
+        # Process treatment keywords
+        if treatment_keywords:
+            tr_chunks = self.create_keyword_centered_chunks(
+                text=text,
+                matched_keywords=treatment_keywords,
+                chunk_size=chunk_size,
+                doc_id=doc_id
+            )
+            
+            # Parse keywords for metadata
+            em_kws = emergency_keywords.split('|') if emergency_keywords else []
+            tr_kws = treatment_keywords.split('|') if treatment_keywords else []
+            
+            # Add metadata for each treatment chunk
+            for i, chunk in enumerate(tr_chunks):
+                chunk_text = chunk['text'].lower()
                 
-                for em_keyword in em_keywords:
-                    em_pos = text.lower().find(em_keyword.lower())
-                    if em_pos != -1:
-                        distance = abs(tr_pos - em_pos)
-                        if distance < closest_distance and distance < chunk_size:
-                            closest_distance = distance
-                            closest_em_keyword = em_keyword
+                # Check for keyword presence in chunk text
+                contains_emergency_kws = [
+                    kw for kw in em_kws if kw.lower() in chunk_text
+                ]
+                contains_treatment_kws = [
+                    kw for kw in tr_kws if kw.lower() in chunk_text
+                ]
                 
-                # Calculate chunk boundaries
-                if closest_em_keyword:
-                    # Center between both keywords
-                    em_pos = text.lower().find(closest_em_keyword.lower())
-                    center = (tr_pos + em_pos) // 2
+                # Determine match type based on keyword presence
+                has_emergency = len(contains_emergency_kws) > 0
+                has_treatment = len(contains_treatment_kws) > 0
+                
+                if has_emergency and has_treatment:
+                    match_type = "both"
+                elif has_emergency:
+                    match_type = "emergency_only"
+                elif has_treatment:
+                    match_type = "treatment_only"
                 else:
-                    # Center on treatment keyword
-                    center = tr_pos
+                    match_type = "none"
                 
-                start = max(0, center - chunk_size // 2)
-                end = min(len(text), center + chunk_size // 2)
-                
-                chunk_text = text[start:end].strip()
-                
-                if chunk_text:
-                    chunk_info = {
-                        "text": chunk_text,
-                        "primary_keyword": tr_keyword,
-                        "emergency_keywords": emergency_keywords,
-                        "treatment_keywords": treatment_keywords,
-                        "closest_emergency_keyword": closest_em_keyword,
-                        "keyword_distance": closest_distance if closest_em_keyword else None,
-                        "chunk_start": start,
-                        "chunk_end": end,
-                        "chunk_id": f"{doc_id}_treatment_chunk_{i}" if doc_id else f"treatment_chunk_{i}",
-                        "source_doc_id": doc_id
-                    }
-                    chunks.append(chunk_info)
+                # Update chunk metadata
+                chunk.update({
+                    'source_type': 'treatment',
+                    'contains_emergency_kws': contains_emergency_kws,
+                    'contains_treatment_kws': contains_treatment_kws,
+                    'match_type': match_type,
+                    'emergency_keywords': emergency_keywords,  # Store original metadata
+                    'treatment_keywords': treatment_keywords,
+                    'chunk_id': f"{doc_id}_treatment_chunk_{i}" if doc_id else f"treatment_chunk_{i}"
+                })
+            
+            chunks.extend(tr_chunks)
         
         return chunks
     
@@ -308,12 +351,14 @@ class DataProcessor:
         
         all_chunks = []
         
-        # Add progress bar with leave=False to avoid cluttering
+        # Add simplified progress bar
         for idx, row in tqdm(self.emergency_data.iterrows(), 
                         total=len(self.emergency_data),
-                        desc="Processing emergency documents",
-                        unit="doc",
-                        leave=False):
+                        desc="Emergency Processing",
+                        unit="docs",
+                        leave=True,
+                        ncols=80,
+                        mininterval=1.0):
             if pd.notna(row.get('clean_text')) and pd.notna(row.get('matched')):
                 chunks = self.create_keyword_centered_chunks(
                     text=row['clean_text'],
@@ -345,12 +390,14 @@ class DataProcessor:
         
         all_chunks = []
         
-        # Add progress bar with leave=False to avoid cluttering
+        # Add simplified progress bar
         for idx, row in tqdm(self.treatment_data.iterrows(),
                         total=len(self.treatment_data),
-                        desc="Processing treatment documents",
-                        unit="doc",
-                        leave=False):
+                        desc="Treatment Processing",
+                        unit="docs",
+                        leave=True,
+                        ncols=80,
+                        mininterval=1.0):
             if (pd.notna(row.get('clean_text')) and 
                 pd.notna(row.get('treatment_matched'))):
                 
@@ -454,10 +501,12 @@ class DataProcessor:
             logger.info(f"Processing {len(texts)} new {chunk_type} texts in {total_batches} batches...")
             
             for i in tqdm(range(0, len(texts), batch_size), 
-                         desc=f"Embedding {chunk_type} subset",
+                         desc=f"Embedding {chunk_type}",
                          total=total_batches,
-                         unit="batch", 
-                         leave=False):
+                         unit="batches", 
+                         leave=True,
+                         ncols=80,
+                         mininterval=0.5):
                 batch_texts = texts[i:i + batch_size]
                 batch_emb = model.encode(
                     batch_texts,

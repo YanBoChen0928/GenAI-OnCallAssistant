@@ -12,7 +12,7 @@ import pandas as pd
 # Add src to path
 sys.path.append(str(Path(__file__).parent.parent.resolve() / "src"))
 
-from data_processing import DataProcessor
+from data_processing import DataProcessor #type: ignore
 import logging
 
 # Setup logging
@@ -80,7 +80,7 @@ def test_chunking():
                 chunks = processor.create_keyword_centered_chunks(
                     text=row['clean_text'],
                     matched_keywords=row['matched'],
-                    chunk_size=512,
+                    chunk_size=256,  # Updated to use 256 tokens
                     doc_id=str(row.get('id', idx))
                 )
                 emergency_chunks.extend(chunks)
@@ -97,7 +97,7 @@ def test_chunking():
                     text=row['clean_text'],
                     emergency_keywords=row.get('matched', ''),
                     treatment_keywords=row['treatment_matched'],
-                    chunk_size=512,
+                    chunk_size=256,  # Updated to use 256 tokens
                     doc_id=str(row.get('id', idx))
                 )
                 treatment_chunks.extend(chunks)
@@ -116,7 +116,7 @@ def test_chunking():
             sample_chunk = treatment_chunks[0]
             print(f"\nSample treatment chunk:")
             print(f"  Primary keyword: {sample_chunk['primary_keyword']}")
-            print(f"  Emergency keywords: {sample_chunk['emergency_keywords']}")
+            print(f"  Emergency keywords: {sample_chunk.get('emergency_keywords', '')}")
             print(f"  Text length: {len(sample_chunk['text'])}")
             print(f"  Text preview: {sample_chunk['text'][:100]}...")
         
@@ -186,18 +186,109 @@ def test_token_chunking():
         print(f"❌ Token chunking test failed: {e}")
         return False
 
+def test_dual_keyword_chunks():
+    """Test the enhanced dual keyword chunking functionality with token-based approach"""
+    print("\n" + "="*50)
+    print("TESTING DUAL KEYWORD CHUNKING")
+    print("="*50)
+    
+    try:
+        processor = DataProcessor()
+        processor.load_embedding_model()  # Need tokenizer for token count verification
+        
+        # Test case 1: Both emergency and treatment keywords
+        print("\nTest Case 1: Both Keywords")
+        text = "Patient with acute MI requires immediate IV treatment. Additional chest pain symptoms require aspirin administration."
+        emergency_kws = "MI|chest pain"
+        treatment_kws = "IV|aspirin"
+        
+        chunks = processor.create_dual_keyword_chunks(
+            text=text,
+            emergency_keywords=emergency_kws,
+            treatment_keywords=treatment_kws,
+            chunk_size=256
+        )
+        
+        # Verify chunk properties
+        for i, chunk in enumerate(chunks):
+            print(f"\nChunk {i+1}:")
+            # Verify source type
+            source_type = chunk.get('source_type')
+            assert source_type in ['emergency', 'treatment'], f"Invalid source_type: {source_type}"
+            print(f"• Source type: {source_type}")
+            
+            # Verify metadata for treatment chunks
+            if source_type == 'treatment':
+                contains_em = chunk.get('contains_emergency_kws', [])
+                contains_tr = chunk.get('contains_treatment_kws', [])
+                match_type = chunk.get('match_type')
+                print(f"• Contains Emergency: {contains_em}")
+                print(f"• Contains Treatment: {contains_tr}")
+                print(f"• Match Type: {match_type}")
+                assert match_type in ['both', 'emergency_only', 'treatment_only', 'none'], \
+                    f"Invalid match_type: {match_type}"
+            
+            # Verify token count
+            tokens = processor.tokenizer.tokenize(chunk['text'])
+            token_count = len(tokens)
+            print(f"• Token count: {token_count}")
+            # Allow for overlap
+            assert token_count <= 384, f"Chunk too large: {token_count} tokens"
+            
+            # Print text preview
+            print(f"• Text preview: {chunk['text'][:100]}...")
+        
+        # Test case 2: Emergency keywords only
+        print("\nTest Case 2: Emergency Only")
+        text = "Patient presents with severe chest pain and dyspnea."
+        emergency_kws = "chest pain"
+        treatment_kws = ""
+        
+        chunks = processor.create_dual_keyword_chunks(
+            text=text,
+            emergency_keywords=emergency_kws,
+            treatment_keywords=treatment_kws,
+            chunk_size=256
+        )
+        
+        assert len(chunks) > 0, "No chunks generated for emergency-only case"
+        print(f"✓ Generated {len(chunks)} chunks")
+        
+        # Test case 3: Treatment keywords only
+        print("\nTest Case 3: Treatment Only")
+        text = "Administer IV fluids and monitor response."
+        emergency_kws = ""
+        treatment_kws = "IV"
+        
+        chunks = processor.create_dual_keyword_chunks(
+            text=text,
+            emergency_keywords=emergency_kws,
+            treatment_keywords=treatment_kws,
+            chunk_size=256
+        )
+        
+        assert len(chunks) > 0, "No chunks generated for treatment-only case"
+        print(f"✓ Generated {len(chunks)} chunks")
+        
+        print("\n✅ All dual keyword chunking tests passed")
+        return True
+        
+    except Exception as e:
+        print(f"\n❌ Dual keyword chunking test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 def main():
     """Run all tests"""
     print("Starting data processing tests...\n")
-    
-    # Import pandas here since it's used in chunking test
-    import pandas as pd
     
     tests = [
         test_data_loading,
         test_chunking,
         test_model_loading,
-        test_token_chunking  # Added new test
+        test_token_chunking,
+        test_dual_keyword_chunks  # Added new test
     ]
     
     results = []
