@@ -93,13 +93,22 @@ class llm_Med42_70BClient:
         try:
             self.logger.info(f"Calling Medical LLM with query: {query}")
             
-            # Prepare chat completion request
+            # Prepare chat completion request with updated system prompt
             response = self.client.chat.completions.create(
                 model="m42-health/Llama3-Med42-70B",
                 messages=[
                     {
                         "role": "system", 
-                        "content": "You are a professional medical assistant trained to extract medical conditions. Provide only the most representative condition name. DO NOT provide medical advice."
+                        "content": """You are a medical assistant trained to extract medical conditions.
+
+For medical queries: Extract the most representative medical condition name.
+For non-medical queries: Respond with "NON_MEDICAL_QUERY" and briefly explain why it's not medical.
+
+Examples:
+- Medical: "chest pain" → "Acute Coronary Syndrome"
+- Non-medical: "cooking pasta" → "NON_MEDICAL_QUERY. This is about culinary techniques, not medical conditions."
+
+DO NOT provide medical advice."""
                     },
                     {
                         "role": "user", 
@@ -161,8 +170,12 @@ class llm_Med42_70BClient:
             response: Full model-generated text
         
         Returns:
-            Extracted medical condition
+            Extracted medical condition or empty string if non-medical
         """
+        # Check if this is a rejection response first
+        if self._is_rejection_response(response):
+            return ""
+        
         from medical_conditions import CONDITION_KEYWORD_MAPPING
         
         # Search in known medical conditions
@@ -171,6 +184,41 @@ class llm_Med42_70BClient:
                 return condition
         
         return response.split('\n')[0].strip() or ""
+    
+    def _is_rejection_response(self, response: str) -> bool:
+        """
+        Dual-layer detection: prompt compliance + natural language patterns
+        
+        Args:
+            response: LLM response text
+            
+        Returns:
+            True if response indicates non-medical query rejection
+        """
+        response_upper = response.upper()
+        response_lower = response.lower()
+        
+        # Layer 1: Check for standardized format (if LLM follows prompt)
+        if "NON_MEDICAL_QUERY" in response_upper:
+            return True
+        
+        # Layer 2: Check natural language rejection patterns (fallback)
+        rejection_patterns = [
+            "i do not address",
+            "do not address", 
+            "outside my biomedical scope",
+            "outside my medical scope", 
+            "unrelated to medical conditions",
+            "not about a medical condition",
+            "not a medical condition",
+            "this query is outside",
+            "culinary practice",  # cooking-related
+            "technology trends",  # programming-related
+            "meteorology",        # weather-related
+            "non-medical context"
+        ]
+        
+        return any(pattern in response_lower for pattern in rejection_patterns)
 
 def main():
     """
