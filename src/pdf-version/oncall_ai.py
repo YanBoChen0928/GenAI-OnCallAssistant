@@ -8,26 +8,26 @@ Import everything from the new modular structure.
 import sys
 from pathlib import Path
 
-# Add src directory to Python path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+# Add pdf-version directory to Python path
+sys.path.insert(0, str(Path(__file__).parent))
 
 # Import all functions for backward compatibility
-from src.models.embedding_models import load_biomedbert_model, load_meditron_model
-from src.data.loaders import load_annotations, filter_pdf_files
-from src.data.pdf_processing import (
+from models.embedding_models import load_biomedbert_model, load_meditron_model
+from data.loaders import load_annotations, filter_pdf_files
+from data.pdf_processing import (
     extract_pdf_text, extract_tables_from_pdf,
     extract_images_ocr_from_pdf, extract_pdf_content_enhanced
 )
-from src.indexing.document_indexer import build_document_index, split_text_into_chunks
-from src.indexing.embedding_creator import create_text_embedding, create_tag_embeddings, create_chunk_embeddings
-from src.indexing.storage import save_document_system, load_document_system
-from src.retrieval.document_retriever import (
+from indexing.document_indexer import build_document_index, split_text_into_chunks
+from indexing.embedding_creator import create_text_embedding, create_tag_embeddings, create_chunk_embeddings
+from indexing.storage import save_document_system, load_document_system
+from retrieval.document_retriever import (
     find_relevant_documents_top_k, find_relevant_documents_top_p,
     find_relevant_documents_threshold, find_relevant_documents,
     create_document_tag_mapping
 )
-from src.retrieval.chunk_retriever import find_relevant_chunks, get_documents_for_rag, get_chunks_for_rag
-from src.demos.demo_runner import build_medical_rag_system, demo_rag_query, demo_all_strategies
+from retrieval.chunk_retriever import find_relevant_chunks, get_documents_for_rag, get_chunks_for_rag
+from demos.demo_runner import build_medical_rag_system, demo_rag_query, demo_all_strategies
 
 # Main function for backward compatibility
 def main():

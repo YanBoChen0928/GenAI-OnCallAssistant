@@ -8,7 +8,7 @@ import numpy as np
 
 def save_document_system(document_index: Dict, tag_embeddings: Dict, 
                         doc_tag_mapping: Dict, chunk_embeddings: Dict = None, 
-                        output_dir: str = "."):
+                        output_dir: str = None):
     """Save the complete document indexing system.
     
     Args:
@@ -18,6 +18,15 @@ def save_document_system(document_index: Dict, tag_embeddings: Dict,
         chunk_embeddings: Chunk embeddings dictionary (optional).
         output_dir: Output directory for saved files.
     """
+    
+    if output_dir is None:
+        # Get project root directory
+        from pathlib import Path
+        root_dir = Path(__file__).parent.parent.parent.parent
+        output_dir = root_dir / 'embeddings' / 'pdfembeddings'
+    
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
     
     # Save document index (content + metadata + chunks)
     doc_index_serializable = {}
@@ -79,7 +88,7 @@ def save_document_system(document_index: Dict, tag_embeddings: Dict,
     print("✅ Document system saved to files")
 
 
-def load_document_system(input_dir: str = ".") -> Tuple[Optional[Dict], Optional[Dict], Optional[Dict], Optional[Dict]]:
+def load_document_system(input_dir: str = None) -> Tuple[Optional[Dict], Optional[Dict], Optional[Dict], Optional[Dict]]:
     """Load the complete document indexing system.
     
     Args:
@@ -89,6 +98,12 @@ def load_document_system(input_dir: str = ".") -> Tuple[Optional[Dict], Optional
         Tuple of (document_index, tag_embeddings, doc_tag_mapping, chunk_embeddings).
         Returns (None, None, None, None) if loading fails.
     """
+    if input_dir is None:
+        # Get project root directory
+        from pathlib import Path
+        root_dir = Path(__file__).parent.parent.parent.parent
+        input_dir = root_dir / 'embeddings' / 'pdfembeddings'
+    
     try:
         # Load document index
         with open(os.path.join(input_dir, 'document_index.json'), 'r', encoding='utf-8') as f:

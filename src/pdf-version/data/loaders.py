@@ -5,7 +5,7 @@ import os
 from typing import List, Dict
 
 
-def load_annotations(file_path: str = 'mapping.json') -> List[Dict]:
+def load_annotations(file_path: str = None) -> List[Dict]:
     """Load medical annotations from JSON file.
     
     Args:
@@ -14,6 +14,12 @@ def load_annotations(file_path: str = 'mapping.json') -> List[Dict]:
     Returns:
         List of annotation dictionaries.
     """
+    if file_path is None:
+        # Get project root directory (3 levels up from this file)
+        from pathlib import Path
+        root_dir = Path(__file__).parent.parent.parent.parent
+        file_path = root_dir / 'embeddings' / 'mapping.json'
+    
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             annotations = json.load(f)
@@ -25,7 +31,7 @@ def load_annotations(file_path: str = 'mapping.json') -> List[Dict]:
         return []
 
 
-def filter_pdf_files(annotations: List[Dict], assets_dir: str = "assets") -> List[str]:
+def filter_pdf_files(annotations: List[Dict], assets_dir: str = None) -> List[str]:
     """Filter and validate PDF files from annotations.
     
     Args:
@@ -35,6 +41,12 @@ def filter_pdf_files(annotations: List[Dict], assets_dir: str = "assets") -> Lis
     Returns:
         List of valid PDF filenames.
     """
+    if assets_dir is None:
+        # Get project root directory
+        from pathlib import Path
+        root_dir = Path(__file__).parent.parent.parent.parent
+        assets_dir = root_dir / 'assets'
+    
     pdf_files = []
 
     for item in annotations:

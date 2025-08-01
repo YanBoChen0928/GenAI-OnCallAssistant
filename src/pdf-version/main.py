@@ -7,10 +7,10 @@ Main entry point for the medical RAG system.
 import sys
 from pathlib import Path
 
-# Add src directory to Python path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+# Add pdf-version directory to Python path
+sys.path.insert(0, str(Path(__file__).parent))
 
-from src.demos.demo_runner import build_medical_rag_system, demo_rag_query, demo_all_strategies
+from demos.demo_runner import build_medical_rag_system, demo_rag_query, demo_all_strategies
 
 
 def main():
