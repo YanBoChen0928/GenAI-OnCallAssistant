@@ -7,10 +7,6 @@ from typing import Dict, List, Optional, Tuple
 from sentence_transformers import SentenceTransformer
 
 # Import existing retrieval components
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from retrieval.document_retriever import find_relevant_documents
 from retrieval.chunk_retriever import find_relevant_chunks, get_chunks_for_rag
 from models.embedding_models import load_biomedbert_model
@@ -391,10 +387,10 @@ def answer_medical_query(query: str,
     return complete_result
 
 
-def load_rag_data(tag_embeddings_path: str = "tag_embeddings.json",
-                  chunk_embeddings_path: str = "chunk_embeddings.json", 
-                  doc_tag_mapping_path: str = "document_tag_mapping.json",
-                  document_index_path: str = "document_index.json") -> Tuple[SentenceTransformer, Dict, Dict, Dict, Dict]:
+def load_rag_data(tag_embeddings_path: str = None,
+                  chunk_embeddings_path: str = None, 
+                  doc_tag_mapping_path: str = None,
+                  document_index_path: str = None) -> Tuple[SentenceTransformer, Dict, Dict, Dict, Dict]:
     """
     Load all RAG data needed for medical question answering.
     
@@ -408,6 +404,28 @@ def load_rag_data(tag_embeddings_path: str = "tag_embeddings.json",
         Tuple of (embedding_model, tag_embeddings, chunk_embeddings, doc_tag_mapping, document_index)
     """
     print("🔄 Loading Medical RAG Data...")
+    
+    # Set default paths if not provided
+    if tag_embeddings_path is None:
+        from pathlib import Path
+        root_dir = Path(__file__).parent.parent.parent.parent
+        embeddings_dir = root_dir / 'embeddings' / 'pdfembeddings'
+        tag_embeddings_path = embeddings_dir / 'tag_embeddings.json'
+    if chunk_embeddings_path is None:
+        from pathlib import Path
+        root_dir = Path(__file__).parent.parent.parent.parent
+        embeddings_dir = root_dir / 'embeddings' / 'pdfembeddings'
+        chunk_embeddings_path = embeddings_dir / 'chunk_embeddings.json'
+    if doc_tag_mapping_path is None:
+        from pathlib import Path
+        root_dir = Path(__file__).parent.parent.parent.parent
+        embeddings_dir = root_dir / 'embeddings' / 'pdfembeddings'
+        doc_tag_mapping_path = embeddings_dir / 'document_tag_mapping.json'
+    if document_index_path is None:
+        from pathlib import Path
+        root_dir = Path(__file__).parent.parent.parent.parent
+        embeddings_dir = root_dir / 'embeddings' / 'pdfembeddings'
+        document_index_path = embeddings_dir / 'document_index.json'
     
     # Load embedding model
     print("📦 Loading BGE Large Medical embedding model...")

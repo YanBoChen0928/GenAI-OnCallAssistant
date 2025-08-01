@@ -2,13 +2,13 @@
 
 from typing import Optional
 
-from src.models.embedding_models import load_biomedbert_model
-from src.data.loaders import load_annotations
-from src.indexing.document_indexer import build_document_index
-from src.indexing.embedding_creator import create_tag_embeddings, create_chunk_embeddings
-from src.indexing.storage import save_document_system, load_document_system
-from src.retrieval.document_retriever import create_document_tag_mapping, find_relevant_documents
-from src.retrieval.chunk_retriever import find_relevant_chunks, get_documents_for_rag, get_chunks_for_rag
+from models.embedding_models import load_biomedbert_model
+from data.loaders import load_annotations
+from indexing.document_indexer import build_document_index
+from indexing.embedding_creator import create_tag_embeddings, create_chunk_embeddings
+from indexing.storage import save_document_system, load_document_system
+from retrieval.document_retriever import create_document_tag_mapping, find_relevant_documents
+from retrieval.chunk_retriever import find_relevant_chunks, get_documents_for_rag, get_chunks_for_rag
 
 
 def build_medical_rag_system(enable_chunk_embeddings: bool = True):

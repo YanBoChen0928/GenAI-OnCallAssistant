@@ -6,10 +6,10 @@ Quick script to generate new embeddings with sentence-based chunking
 import sys
 from pathlib import Path
 
-# Add src directory to Python path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+# Add pdf-version directory to Python path
+sys.path.insert(0, str(Path(__file__).parent))
 
-from src.demos.demo_runner import build_medical_rag_system
+from demos.demo_runner import build_medical_rag_system
 
 def main():
     print("🚀 Starting to build medical RAG system with new sentence-based chunking...")

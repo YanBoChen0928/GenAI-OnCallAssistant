@@ -4,7 +4,7 @@ import os
 from typing import List, Dict
 from llama_index.core import Document
 from llama_index.core.node_parser import SentenceSplitter
-from src.data.pdf_processing import extract_pdf_content_enhanced
+from data.pdf_processing import extract_pdf_content_enhanced
 
 
 def split_text_into_chunks(text: str, chunk_size: int = 256, chunk_overlap: int = 25) -> List[Dict]:
