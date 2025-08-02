@@ -88,9 +88,17 @@ OnCall.ai helps healthcare professionals by:
 
 ### **Data Flow**
 ```
-User Query → Multi-Level Processing → Dual-Index Retrieval → RAG Generation
-     ↓              ↓                      ↓                    ↓
-  Validation    Condition Mapping    Guidelines Search    Medical Advice
+User Query → Level 1: Predefined Mapping
+     ↓ (if fails)
+Level 2: LLM Extraction
+     ↓ (if fails)
+Level 3: Semantic Search
+     ↓ (if fails)
+Level 4: Medical Validation
+     ↓ (if fails)
+Level 5: Generic Search
+     ↓ (if fails)
+No Match Found
 ```
 
 ### **Core Technologies**
