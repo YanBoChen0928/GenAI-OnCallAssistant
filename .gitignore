@@ -1,6 +1,7 @@
 # 🧠 Virtual environments
 genAIvenv/
 .final_project_env/
+rag_env/
 .env
 .venv
 env/

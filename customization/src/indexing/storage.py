@@ -2,13 +2,19 @@
 
 import json
 import os
+import logging
 from typing import Dict, Optional, Tuple
 import numpy as np
+from .annoy_manager import AnnoyIndexManager
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def save_document_system(document_index: Dict, tag_embeddings: Dict, 
                         doc_tag_mapping: Dict, chunk_embeddings: Dict = None, 
-                        output_dir: str = None):
+                        output_dir: str = None, build_annoy_indices: bool = True):
     """Save the complete document indexing system.
     
     Args:
@@ -84,6 +90,31 @@ def save_document_system(document_index: Dict, tag_embeddings: Dict,
         
         with open(os.path.join(output_dir, 'chunk_embeddings.json'), 'w', encoding='utf-8') as f:
             json.dump(chunk_embeddings_serializable, f, indent=2, ensure_ascii=False)
+    
+    # Build and save ANNOY indices if requested
+    if build_annoy_indices:
+        logger.info("🔧 Building ANNOY indices for fast retrieval...")
+        try:
+            # Initialize ANNOY manager (assuming BGE Large Medical embedding dimension)
+            annoy_manager = AnnoyIndexManager(embedding_dim=1024, metric='angular')
+            
+            # Build tag index
+            logger.info("Building tag ANNOY index...")
+            annoy_manager.build_tag_index(tag_embeddings, n_trees=50)
+            
+            # Build chunk index if chunk embeddings are provided
+            if chunk_embeddings:
+                logger.info("Building chunk ANNOY index...")
+                annoy_manager.build_chunk_index(chunk_embeddings, n_trees=50)
+            
+            # Save indices
+            logger.info("Saving ANNOY indices...")
+            annoy_manager.save_indices(output_dir)
+            
+            logger.info("✅ ANNOY indices built and saved successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to build ANNOY indices: {e}")
+            logger.warning("Continuing without ANNOY indices - will use original search methods")
     
     print("✅ Document system saved to files")
 
@@ -162,3 +193,61 @@ def load_document_system(input_dir: str = None) -> Tuple[Optional[Dict], Optiona
     except Exception as e:
         print(f"❌ Failed to load document system: {e}")
         return None, None, None, None
+
+
+def load_annoy_manager(input_dir: str = None) -> Optional[AnnoyIndexManager]:
+    """
+    Load ANNOY index manager with pre-built indices.
+    
+    Args:
+        input_dir: Input directory containing saved indices
+        
+    Returns:
+        AnnoyIndexManager instance or None if loading fails
+    """
+    if input_dir is None:
+        # Get project root directory
+        from pathlib import Path
+        root_dir = Path(__file__).parent.parent.parent.parent
+        input_dir = root_dir / 'embeddings' / 'pdfembeddings'
+    
+    try:
+        # Initialize ANNOY manager
+        annoy_manager = AnnoyIndexManager(embedding_dim=1024, metric='angular')
+        
+        # Try to load indices
+        if annoy_manager.load_indices(input_dir):
+            logger.info("✅ ANNOY indices loaded successfully")
+            return annoy_manager
+        else:
+            logger.warning("⚠️ Failed to load ANNOY indices")
+            return None
+            
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize ANNOY manager: {e}")
+        return None
+
+
+def load_document_system_with_annoy(input_dir: str = None, annoy_dir: str = None) -> Tuple[Optional[Dict], Optional[Dict], Optional[Dict], Optional[Dict], Optional[AnnoyIndexManager]]:
+    """
+    Load the complete document indexing system including ANNOY indices.
+    
+    Args:
+        input_dir: Input directory containing saved files
+        annoy_dir: Directory containing ANNOY indices (if different from input_dir)
+        
+    Returns:
+        Tuple of (document_index, tag_embeddings, doc_tag_mapping, chunk_embeddings, annoy_manager).
+        Returns all None values if loading fails.
+    """
+    # Load the standard document system
+    document_index, tag_embeddings, doc_tag_mapping, chunk_embeddings = load_document_system(input_dir)
+    
+    if document_index is None:
+        return None, None, None, None, None
+    
+    # Load ANNOY manager
+    # Use annoy_dir if provided, otherwise use input_dir
+    annoy_manager = load_annoy_manager(annoy_dir if annoy_dir else input_dir)
+    
+    return document_index, tag_embeddings, doc_tag_mapping, chunk_embeddings, annoy_manager
