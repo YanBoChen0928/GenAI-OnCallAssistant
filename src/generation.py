@@ -348,10 +348,10 @@ Your response should be concise but comprehensive, suitable for immediate clinic
         Returns:
             Structured medical advice response
         """
-        # Extract generated content
-        advice_content = generated_advice.get('extracted_condition', '')
+        # Extract generated content - use raw_response for complete medical advice
+        advice_content = generated_advice.get('raw_response', '')
         if not advice_content:
-            advice_content = generated_advice.get('raw_response', 'Unable to generate medical advice.')
+            advice_content = generated_advice.get('extracted_condition', 'Unable to generate medical advice.')
         
         # Calculate confidence based on available factors
         confidence_score = self._calculate_confidence_score(generated_advice, chunks_used)
