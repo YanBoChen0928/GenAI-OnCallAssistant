@@ -227,17 +227,28 @@ class UserPromptProcessor:
         generic_query = f"{user_query} medical treatment"
         
         try:
+            # Check if query contains any generic medical terms
+            if not any(term in generic_query.lower() for term in generic_medical_terms):
+                logger.info("No generic medical terms found in query")
+                return None
+            
+            # Check if retrieval system is available
+            if not self.retrieval_system:
+                logger.warning("No retrieval system available for generic search")
+                return None
+
             # Perform generic medical search
             generic_results = self.retrieval_system.search_generic_medical_content(generic_query)
             
             if generic_results:
-                return {
+                return 
+                {
                     'condition': 'generic medical query',
                     'emergency_keywords': 'medical|emergency',
                     'treatment_keywords': 'treatment|management',
                     'generic_confidence': 0.5
                 }
-            
+
             return None 
         except Exception as e:
             logger.error(f"Generic medical search error: {e}")
