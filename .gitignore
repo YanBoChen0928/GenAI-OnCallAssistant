@@ -19,6 +19,8 @@ venv/
 docs/
 dataset/dataset/
 cache/
+memory-bank/
+CLAUDE.md
 
 # 🧾 Compiled / output files
 *.pyc
