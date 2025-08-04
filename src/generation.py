@@ -262,8 +262,8 @@ class MedicalAdviceGenerator:
             selected_chunks.extend(emergency_chunks[:priorities["emergency_subset"]])
             selected_chunks.extend(treatment_chunks[:priorities["treatment_subset"]])
             
-            # Add hospital custom chunks alongside
-            selected_chunks.extend(hospital_custom_chunks)
+            # Add hospital custom chunks alongside (limit to top 3 for quality)
+            selected_chunks.extend(hospital_custom_chunks[:3])
             
             # TODO: Future Dataset B integration
             # selected_chunks.extend(symptom_chunks[:priorities["symptom_subset"]])
