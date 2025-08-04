@@ -136,10 +136,15 @@ class OnCallAIInterface:
             processing_steps.append(f"   ⏱️ Processing Time: {step1_time:.3f}s")
             
             # Handle non-medical queries
-            if condition_result.get('type') == 'invalid_query':
+            if condition_result.get('query_status') in ['invalid_query', 'non_medical']:
                 non_medical_msg = condition_result.get('message', 'This appears to be a non-medical query.')
                 processing_steps.append("   🚫 Query identified as non-medical")
                 return non_medical_msg, '\n'.join(processing_steps), "{}"
+            
+            # Handle medical query with no specific condition
+            if condition_result.get('query_status') == 'medical_no_condition':
+                processing_steps.append("   ℹ️ Medical query confirmed, no specific condition extracted")
+                # Continue with standard processing
             
             # STEP 2: User Confirmation (Auto-simulated)
             processing_steps.append("\n🤝 Step 2: User confirmation (auto-confirmed for demo)")
