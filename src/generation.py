@@ -36,8 +36,8 @@ FALLBACK_TIMEOUTS = {
 }
 
 FALLBACK_TOKEN_LIMITS = {
-    "primary": 800,         # Full comprehensive medical advice
-    "fallback_1": 300,      # Concise medical guidance
+    "primary": 1200,         # Full comprehensive medical advice
+    "fallback_1": 600,      # Concise medical guidance
     "fallback_2": 0         # Template-based, no LLM tokens
 }
 
@@ -329,9 +329,9 @@ class MedicalAdviceGenerator:
         • Reference evidence from above sources
         • Emphasize clinical judgment
 
-        IMPORTANT: Keep response within 700 tokens. If approaching this limit, prioritize the most critical steps and conclude with a brief summary of remaining considerations.
+        IMPORTANT: Keep response under 1000 words. Use concise numbered points. For complex cases with multiple conditions, address the most urgent condition first, then relevant comorbidities. Prioritize actionable clinical steps over theoretical explanations.
 
-        For complex cases with multiple conditions, address the most urgent condition first, then relevant comorbidities. Prioritize actionable clinical steps over theoretical explanations. Your response should provide practical clinical guidance suitable for immediate bedside application with appropriate medical caution."""
+        Your response should provide practical clinical guidance suitable for immediate bedside application with appropriate medical caution."""
 
         return prompt
 
