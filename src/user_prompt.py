@@ -22,6 +22,7 @@ import re # Added missing import for re
 # Import our centralized medical conditions configuration
 from medical_conditions import (
     CONDITION_KEYWORD_MAPPING, 
+    CONDITION_REGEX_MAPPING,
     get_condition_details, 
     validate_condition
 )
@@ -51,6 +52,48 @@ class UserPromptProcessor:
         
         logger.info("UserPromptProcessor initialized")
 
+    def _extract_condition_from_query(self, user_query: str) -> Optional[str]:
+        """
+        Unified condition extraction with flexible matching
+        
+        Args:
+            user_query: User's medical query
+        
+        Returns:
+            Standardized condition name or None
+        """
+        if not user_query:
+            return None
+        
+        query_lower = user_query.lower().strip()
+        
+        # Level 1: Direct exact matching (fastest)
+        for condition in CONDITION_KEYWORD_MAPPING.keys():
+            if condition.lower() in query_lower:
+                logger.info(f"🎯 Direct match found: {condition}")
+                return condition
+        
+        # Level 2: Regular expression matching (flexible)
+        for regex_pattern, mapped_condition in CONDITION_REGEX_MAPPING.items():
+            if re.search(regex_pattern, query_lower, re.IGNORECASE):
+                logger.info(f"🎯 Regex match found: {regex_pattern} → {mapped_condition}")
+                return mapped_condition
+        
+        # Level 3: Partial keyword matching (fallback)
+        medical_keywords_mapping = {
+            'coronary': 'acute_coronary_syndrome',
+            'myocardial': 'acute myocardial infarction',
+            'stroke': 'acute stroke',
+            'embolism': 'pulmonary embolism'
+        }
+        
+        for keyword, condition in medical_keywords_mapping.items():
+            if keyword in query_lower:
+                logger.info(f"🎯 Keyword match found: {keyword} → {condition}")
+                return condition
+        
+        return None
+
     def extract_condition_keywords(self, user_query: str) -> Dict[str, str]:
         """
         Extract condition keywords with multi-level fallback
@@ -61,36 +104,54 @@ class UserPromptProcessor:
         Returns:
             Dict with condition and keywords
         """
+        logger.info(f"🔍 Starting condition extraction for query: '{user_query}'")
  
         # Level 1: Predefined Mapping (Fast Path)
+        logger.info("📍 LEVEL 1: Attempting predefined mapping...")
         predefined_result = self._predefined_mapping(user_query)
         if predefined_result:
+            logger.info("✅ LEVEL 1: SUCCESS - Found predefined mapping")
             return predefined_result
+        logger.info("❌ LEVEL 1: FAILED - No predefined mapping found")
         
         # Level 2: Llama3-Med42-70B Extraction (if available)
+        logger.info("📍 LEVEL 2: Attempting LLM extraction...")
         if self.llm_client:
             llm_result = self._extract_with_llm(user_query)
             if llm_result:
+                logger.info("✅ LEVEL 2: SUCCESS - LLM extraction successful")
                 return llm_result
+            logger.info("❌ LEVEL 2: FAILED - LLM extraction failed")
+        else:
+            logger.info("⏭️  LEVEL 2: SKIPPED - No LLM client available")
         
         # Level 3: Semantic Search Fallback
+        logger.info("📍 LEVEL 3: Attempting semantic search...")
         semantic_result = self._semantic_search_fallback(user_query)
         if semantic_result:
+            logger.info("✅ LEVEL 3: SUCCESS - Semantic search successful")
             return semantic_result
+        logger.info("❌ LEVEL 3: FAILED - Semantic search failed")
         
         # Level 4: Medical Query Validation
+        logger.info("📍 LEVEL 4: Validating medical query...")
         # Only validate if previous levels failed - speed optimization
         validation_result = self.validate_medical_query(user_query)
         if validation_result:  # If validation fails (returns non-None)
+            logger.info("❌ LEVEL 4: FAILED - Query identified as non-medical")
             return validation_result
+        logger.info("✅ LEVEL 4: PASSED - Query validated as medical, continuing...")
         
         # Level 5: Generic Medical Search (after validation passes)
+        logger.info("📍 LEVEL 5: Attempting generic medical search...")
         generic_result = self._generic_medical_search(user_query)
         if generic_result:
+            logger.info("✅ LEVEL 5: SUCCESS - Generic medical search successful")
             return generic_result
+        logger.info("❌ LEVEL 5: FAILED - Generic medical search failed")
         
         # No match found
-        
+        logger.warning("🚫 ALL LEVELS FAILED - Returning empty result")
         return {
             'condition': '',
             'emergency_keywords': '',
@@ -99,7 +160,7 @@ class UserPromptProcessor:
 
     def _predefined_mapping(self, user_query: str) -> Optional[Dict[str, str]]:
         """
-        Fast predefined condition mapping
+        Fast predefined condition mapping using unified extraction
         
         Args:
             user_query: User's medical query
@@ -107,15 +168,18 @@ class UserPromptProcessor:
         Returns:
             Mapped condition keywords or None
         """
-        query_lower = user_query.lower()
+        # Use unified condition extraction
+        condition = self._extract_condition_from_query(user_query)
         
-        for condition, mappings in CONDITION_KEYWORD_MAPPING.items():
-            if condition.lower() in query_lower:
-                logger.info(f"Matched predefined condition: {condition}")
+        if condition:
+            # Get condition details using the flexible matching
+            condition_details = get_condition_details(condition)
+            if condition_details:
+                logger.info(f"✅ Level 1 matched condition: {condition}")
                 return {
                     'condition': condition,
-                    'emergency_keywords': mappings['emergency'],
-                    'treatment_keywords': mappings['treatment']
+                    'emergency_keywords': condition_details['emergency'],
+                    'treatment_keywords': condition_details['treatment']
                 }
         
         return None
@@ -140,16 +204,22 @@ class UserPromptProcessor:
                 timeout=2.0
             )
             
-            extracted_condition = llama_response.get('extracted_condition', '')
+            llm_extracted_condition = llama_response.get('extracted_condition', '')
+            logger.info(f"🤖 LLM extracted condition: {llm_extracted_condition}")
             
-            if extracted_condition and validate_condition(extracted_condition):
-                condition_details = get_condition_details(extracted_condition)
-                if condition_details:
-                    return {
-                        'condition': extracted_condition,
-                        'emergency_keywords': condition_details.get('emergency', ''),
-                        'treatment_keywords': condition_details.get('treatment', '')
-                    }
+            if llm_extracted_condition:
+                # Use unified condition extraction for validation and standardization
+                standardized_condition = self._extract_condition_from_query(llm_extracted_condition)
+                
+                if standardized_condition:
+                    condition_details = get_condition_details(standardized_condition)
+                    if condition_details:
+                        logger.info(f"✅ Level 2 standardized condition: {standardized_condition}")
+                        return {
+                            'condition': standardized_condition,
+                            'emergency_keywords': condition_details['emergency'],
+                            'treatment_keywords': condition_details['treatment']
+                        }
             
             return None
         
@@ -241,8 +311,7 @@ class UserPromptProcessor:
             generic_results = self.retrieval_system.search_generic_medical_content(generic_query)
             
             if generic_results:
-                return 
-                {
+                return {
                     'condition': 'generic medical query',
                     'emergency_keywords': 'medical|emergency',
                     'treatment_keywords': 'treatment|management',
@@ -256,7 +325,7 @@ class UserPromptProcessor:
 
     def _infer_condition_from_text(self, text: str) -> Optional[str]:
         """
-        Infer medical condition from text using embedding similarity
+        Infer medical condition from text using angular distance
         
         Args:
             text: Input medical text
@@ -264,20 +333,32 @@ class UserPromptProcessor:
         Returns:
             Inferred condition or None
         """
-        # Implement a simple condition inference using embedding similarity
-        # This is a placeholder and would need more sophisticated implementation
+        # Implement condition inference using angular distance (consistent with retrieval system)
         conditions = list(CONDITION_KEYWORD_MAPPING.keys())
         text_embedding = self.embedding_model.encode(text)
         condition_embeddings = [self.embedding_model.encode(condition) for condition in conditions]
         
+        # Calculate cosine similarities first
         similarities = [
             np.dot(text_embedding, condition_emb) / 
             (np.linalg.norm(text_embedding) * np.linalg.norm(condition_emb))
             for condition_emb in condition_embeddings
         ]
         
-        max_similarity_index = np.argmax(similarities)
-        return conditions[max_similarity_index] if similarities[max_similarity_index] > 0.7 else None
+        # Convert to angular distances
+        angular_distances = [np.arccos(np.clip(sim, -1, 1)) for sim in similarities]
+        
+        # Find minimum angular distance (most similar)
+        min_distance_index = np.argmin(angular_distances)
+        min_distance = angular_distances[min_distance_index]
+        
+        # Use angular distance threshold of 1.0 (approximately 57 degrees)
+        if min_distance < 1.0:
+            logger.info(f"Condition inferred: {conditions[min_distance_index]}, angular distance: {min_distance:.3f}")
+            return conditions[min_distance_index]
+        else:
+            logger.info(f"No condition found within angular distance threshold. Min distance: {min_distance:.3f}")
+            return None
 
     def validate_keywords(self, keywords: Dict[str, str]) -> bool:
         """
