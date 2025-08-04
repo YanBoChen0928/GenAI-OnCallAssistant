@@ -235,12 +235,20 @@ class OnCallAIInterface:
             if not DEBUG_MODE:
                 technical_details = self._sanitize_technical_details(technical_details)
             
-            return (
-                medical_advice,
-                '\n'.join(processing_steps),
-                guidelines_display,
-                json.dumps(technical_details, indent=2)
-            )
+            # Conditional return based on DEBUG_MODE
+            if DEBUG_MODE:
+                return (
+                    medical_advice,
+                    '\n'.join(processing_steps),
+                    guidelines_display,
+                    json.dumps(technical_details, indent=2)
+                )
+            else:
+                return (
+                    medical_advice,
+                    '\n'.join(processing_steps),
+                    guidelines_display
+                )
             
         except Exception as e:
             error_msg = f"❌ System error: {str(e)}"
