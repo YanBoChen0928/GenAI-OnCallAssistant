@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import List, Dict
 
 # Add src directory to Python path
-sys.path.insert(0, str(Path(__file__).parent / 'src'))
+src_path = Path(__file__).parent / 'src'
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
 
 # Import necessary modules
 from models.embedding_models import load_biomedbert_model
@@ -17,8 +19,8 @@ from data.loaders import load_annotations
 from indexing.document_indexer import build_document_index
 from indexing.embedding_creator import create_tag_embeddings, create_chunk_embeddings
 from indexing.storage import save_document_system, load_document_system_with_annoy
-from retrieval.document_retriever import create_document_tag_mapping
-from retrieval.chunk_retriever import find_relevant_chunks_with_fallback
+from custom_retrieval.document_retriever import create_document_tag_mapping
+from custom_retrieval.chunk_retriever import find_relevant_chunks_with_fallback
 
 
 def build_customization_embeddings():
@@ -68,7 +70,7 @@ def build_customization_embeddings():
     return True
 
 
-def retrieve_document_chunks(query: str, top_k: int = 5) -> List[Dict]:
+def retrieve_document_chunks(query: str, top_k: int = 5, llm_client=None) -> List[Dict]:
     """Retrieve relevant document chunks using two-stage ANNOY retrieval.
     
     Stage 1: Find relevant documents using tag embeddings (medical concepts)
@@ -77,6 +79,7 @@ def retrieve_document_chunks(query: str, top_k: int = 5) -> List[Dict]:
     Args:
         query: The search query
         top_k: Number of chunks to retrieve
+        llm_client: Optional LLM client for keyword extraction
         
     Returns:
         List of dictionaries containing chunk information
@@ -98,8 +101,24 @@ def retrieve_document_chunks(query: str, top_k: int = 5) -> List[Dict]:
         print("❌ Failed to load ANNOY manager")
         return []
     
-    # Create query embedding
-    query_embedding = embedding_model.encode(query)
+    # Extract medical keywords for better matching
+    search_query = query
+    if llm_client:
+        try:
+            print(f"🔍 Extracting medical keywords from: '{query}'")
+            keywords = llm_client.extract_medical_keywords_for_customization(query)
+            if keywords:
+                search_query = " ".join(keywords)
+                print(f"✅ Using keywords for search: '{search_query}'")
+            else:
+                print("ℹ️ No keywords extracted, using original query")
+        except Exception as e:
+            print(f"⚠️ Keyword extraction failed, using original query: {e}")
+    else:
+        print("ℹ️ No LLM client provided, using original query")
+    
+    # Create query embedding using processed search query
+    query_embedding = embedding_model.encode(search_query)
     
     # Stage 1: Find relevant documents using tag ANNOY index
     print(f"🔍 Stage 1: Finding relevant documents for query: '{query}'")

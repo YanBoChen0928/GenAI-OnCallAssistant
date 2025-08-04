@@ -9,7 +9,7 @@ Date: 2025-07-29
 
 import logging
 import os
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Union, List
 from huggingface_hub import InferenceClient
 from dotenv import load_dotenv
 
@@ -161,6 +161,86 @@ DO NOT provide medical advice."""
                 'error': str(e),
                 'latency': latency  # Include latency even for error cases
             }
+
+    def extract_medical_keywords_for_customization(
+        self, 
+        query: str, 
+        max_tokens: int = 50, 
+        timeout: Optional[float] = None
+    ) -> List[str]:
+        """
+        Extract key medical concepts for hospital customization matching.
+        
+        Args:
+            query: Medical query text
+            max_tokens: Maximum tokens to generate
+            timeout: Specific API call timeout
+        
+        Returns:
+            List of key medical keywords/concepts
+        """
+        import time
+        
+        # Start timing
+        start_time = time.time()
+        
+        try:
+            self.logger.info(f"Extracting medical keywords for: {query}")
+            
+            # Prepare chat completion request for keyword extraction
+            response = self.client.chat.completions.create(
+                model="m42-health/Llama3-Med42-70B",
+                messages=[
+                    {
+                        "role": "system", 
+                        "content": """You are a medical keyword extractor. Extract 2-4 key medical concepts from queries for hospital document matching.
+
+Return ONLY the key medical terms/concepts, separated by commas.
+
+Examples:
+- "Patient with severe chest pain and shortness of breath" → "chest pain, dyspnea, cardiac"
+- "How to manage atrial fibrillation in emergency?" → "atrial fibrillation, arrhythmia, emergency"
+- "Stroke protocol for elderly patient" → "stroke, cerebrovascular, elderly"
+
+Focus on: conditions, symptoms, procedures, body systems."""
+                    },
+                    {
+                        "role": "user", 
+                        "content": query
+                    }
+                ],
+                max_tokens=max_tokens
+            )
+            
+            # Calculate latency
+            end_time = time.time()
+            latency = end_time - start_time
+            
+            # Extract keywords from response
+            keywords_text = response.choices[0].message.content or ""
+            
+            # Log response and latency
+            self.logger.info(f"Keywords extracted: {keywords_text}")
+            self.logger.info(f"Keyword extraction latency: {latency:.4f} seconds")
+            
+            # Parse keywords
+            keywords = [k.strip() for k in keywords_text.split(',') if k.strip()]
+            
+            # Filter out empty or very short keywords
+            keywords = [k for k in keywords if len(k) > 2]
+            
+            return keywords
+            
+        except Exception as e:
+            # Calculate latency even for failed requests
+            end_time = time.time()
+            latency = end_time - start_time
+            
+            self.logger.error(f"Medical keyword extraction error: {str(e)}")
+            self.logger.error(f"Query that caused error: {query}")
+            
+            # Return empty list on error
+            return []
 
     def _extract_condition(self, response: str) -> str:
         """

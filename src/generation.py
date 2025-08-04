@@ -128,6 +128,7 @@ class MedicalAdviceGenerator:
         treatment_chunks = classified_chunks.get("treatment_subset", [])
         symptom_chunks = classified_chunks.get("symptom_subset", [])      # Dataset B (future)
         diagnosis_chunks = classified_chunks.get("diagnosis_subset", [])  # Dataset B (future)
+        hospital_custom_chunks = classified_chunks.get("hospital_custom", [])  # Hospital customization
         
         # Select chunks based on intention or intelligent defaults
         selected_chunks = self._select_chunks_by_intention(
@@ -135,7 +136,8 @@ class MedicalAdviceGenerator:
             emergency_chunks=emergency_chunks,
             treatment_chunks=treatment_chunks,
             symptom_chunks=symptom_chunks,
-            diagnosis_chunks=diagnosis_chunks
+            diagnosis_chunks=diagnosis_chunks,
+            hospital_custom_chunks=hospital_custom_chunks
         )
         
         # Build context block from selected chunks
@@ -161,7 +163,8 @@ class MedicalAdviceGenerator:
             "emergency_subset": [],
             "treatment_subset": [],
             "symptom_subset": [],      # Reserved for Dataset B
-            "diagnosis_subset": []     # Reserved for Dataset B
+            "diagnosis_subset": [],     # Reserved for Dataset B
+            "hospital_custom": []      # Hospital-specific customization
         }
         
         # Process results from current dual-index system
@@ -180,29 +183,49 @@ class MedicalAdviceGenerator:
                 logger.warning(f"Unknown chunk type: {chunk_type}, defaulting to STAT (tentative)")
                 classified["emergency_subset"].append(chunk)
         
+        # Process hospital customization results if available
+        customization_results = retrieval_results.get('customization_results', [])
+        if customization_results:
+            for custom_chunk in customization_results:
+                # Convert customization format to standard chunk format
+                standardized_chunk = {
+                    'type': 'hospital_custom',
+                    'text': custom_chunk.get('chunk_text', ''),
+                    'distance': 1 - custom_chunk.get('score', 0),  # Convert score to distance
+                    'matched': f"Hospital Doc: {custom_chunk.get('document', 'Unknown')}",
+                    'metadata': custom_chunk.get('metadata', {})
+                }
+                classified["hospital_custom"].append(standardized_chunk)
+            logger.info(f"Added {len(customization_results)} hospital-specific chunks")
+        
         # TODO: Future integration point for Dataset B
         # When Dataset B team provides symptom/diagnosis data:
         # classified["symptom_subset"] = process_dataset_b_symptoms(retrieval_results)
         # classified["diagnosis_subset"] = process_dataset_b_diagnosis(retrieval_results)
         
         logger.info(f"Classified chunks: Emergency={len(classified['emergency_subset'])}, "
-                   f"Treatment={len(classified['treatment_subset'])}")
+                   f"Treatment={len(classified['treatment_subset'])}, "
+                   f"Hospital Custom={len(classified['hospital_custom'])}")
         
         return classified
 
     def _select_chunks_by_intention(self, intention: Optional[str], 
                                    emergency_chunks: List, treatment_chunks: List,
-                                   symptom_chunks: List, diagnosis_chunks: List) -> List:
+                                   symptom_chunks: List, diagnosis_chunks: List,
+                                   hospital_custom_chunks: List = None) -> List:
         """
         Select optimal chunk combination based on query intention
         
         Args:
             intention: Detected or specified intention  
             *_chunks: Chunks from different dataset sources
+            hospital_custom_chunks: Hospital-specific customization chunks
             
         Returns:
             List of selected chunks for prompt construction
         """
+        hospital_custom_chunks = hospital_custom_chunks or []
+        
         if intention and intention in self.dataset_priorities:
             # Use predefined priorities for known intentions
             priorities = self.dataset_priorities[intention]
@@ -212,6 +235,9 @@ class MedicalAdviceGenerator:
             selected_chunks.extend(emergency_chunks[:priorities["emergency_subset"]])
             selected_chunks.extend(treatment_chunks[:priorities["treatment_subset"]])
             
+            # Add hospital custom chunks alongside
+            selected_chunks.extend(hospital_custom_chunks)
+            
             # TODO: Future Dataset B integration
             # selected_chunks.extend(symptom_chunks[:priorities["symptom_subset"]])
             # selected_chunks.extend(diagnosis_chunks[:priorities["diagnosis_subset"]])
@@ -220,7 +246,7 @@ class MedicalAdviceGenerator:
             
         else:
             # No specific intention - let LLM judge from best available chunks
-            all_chunks = emergency_chunks + treatment_chunks + symptom_chunks + diagnosis_chunks
+            all_chunks = emergency_chunks + treatment_chunks + symptom_chunks + diagnosis_chunks + hospital_custom_chunks
             
             # Sort by relevance (distance) and take top 6
             all_chunks_sorted = sorted(all_chunks, key=lambda x: x.get("distance", 999))
@@ -251,10 +277,19 @@ class MedicalAdviceGenerator:
             distance = chunk.get("distance", 0)
             
             # Format each chunk with metadata
-            context_part = f"""
+            if chunk_type == 'hospital_custom':
+                # Special formatting for hospital-specific guidelines
+                source_label = "Hospital Protocol"
+                context_part = f"""
+[Guideline {i}] (Source: {source_label}, Relevance: {1-distance:.3f})
+📋 {chunk.get('matched', 'Hospital Document')}
+{chunk_text}
+                """.strip()
+            else:
+                context_part = f"""
 [Guideline {i}] (Source: {chunk_type.title()}, Relevance: {1-distance:.3f})
 {chunk_text}
-            """.strip()
+                """.strip()
             
             context_parts.append(context_part)
         
