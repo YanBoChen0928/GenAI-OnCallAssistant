@@ -114,14 +114,35 @@ class UserPromptProcessor:
             return predefined_result
         logger.info("❌ LEVEL 1: FAILED - No predefined mapping found")
         
-        # Level 2: Llama3-Med42-70B Extraction (if available)
-        logger.info("📍 LEVEL 2: Attempting LLM extraction...")
+        # Level 2+4 Combined: Single LLM call for dual processing
+        logger.info("📍 LEVEL 2+4 COMBINED: Attempting unified extraction + validation")
+        if self.llm_client:
+            combined_result = self._combined_llm_extraction_validation(user_query)
+            if combined_result:
+                if combined_result['query_status'] == 'condition_found':
+                    logger.info("✅ LEVEL 2+4: SUCCESS - Condition extracted")
+                    return combined_result
+                elif combined_result['query_status'] in ['non_medical', 'invalid_query']:
+                    logger.info("✅ LEVEL 2+4: Query identified as non-medical")
+                    return combined_result
+                elif combined_result['query_status'] == 'medical_no_condition':
+                    logger.info("✅ LEVEL 2+4: Medical query confirmed, proceeding to semantic search")
+                    # Continue to Level 3 since query is validated as medical
+                else:
+                    logger.info("❌ LEVEL 2+4: Combined processing failed, falling back to individual levels")
+            else:
+                logger.info("❌ LEVEL 2+4: Combined processing failed, falling back to individual levels")
+        else:
+            logger.info("⏭️  LEVEL 2+4: SKIPPED - No LLM client available")
+
+        # Level 2: Fallback LLM Extraction (if combined failed)
+        logger.info("📍 LEVEL 2: Attempting individual LLM extraction...")
         if self.llm_client:
             llm_result = self._extract_with_llm(user_query)
             if llm_result:
-                logger.info("✅ LEVEL 2: SUCCESS - LLM extraction successful")
+                logger.info("✅ LEVEL 2: SUCCESS - Individual LLM extraction successful")
                 return llm_result
-            logger.info("❌ LEVEL 2: FAILED - LLM extraction failed")
+            logger.info("❌ LEVEL 2: FAILED - Individual LLM extraction failed")
         else:
             logger.info("⏭️  LEVEL 2: SKIPPED - No LLM client available")
         
@@ -153,9 +174,11 @@ class UserPromptProcessor:
         # No match found
         logger.warning("🚫 ALL LEVELS FAILED - Returning empty result")
         return {
+            'query_status': 'no_match_found',
             'condition': '',
             'emergency_keywords': '',
-            'treatment_keywords': ''
+            'treatment_keywords': '',
+            'message': 'Unable to process medical query'
         }
 
     def _predefined_mapping(self, user_query: str) -> Optional[Dict[str, str]]:
@@ -183,6 +206,127 @@ class UserPromptProcessor:
                 }
         
         return None
+
+    def _combined_llm_extraction_validation(self, user_query: str) -> Optional[Dict[str, Any]]:
+        """
+        Combined Level 2+4: Extract condition AND validate medical query in single LLM call
+        Expected time reduction: 16-25s → 12-15s (40% improvement)
+        
+        Args:
+            user_query: User's medical query
+            
+        Returns:
+            Dict with combined result indicating:
+            - condition_found: Specific medical condition extracted
+            - medical_no_condition: Medical query but no specific condition
+            - non_medical: Non-medical query (reject)
+        """
+        if not self.llm_client:
+            return None
+        
+        try:
+            # Combined prompt for both extraction and validation
+            combined_prompt = f"""Medical Query Analysis - Dual Task Processing:
+
+QUERY: "{user_query}"
+
+TASKS:
+1. Extract primary medical condition (if specific condition identifiable)
+2. Determine if this is a medical-related query
+
+RESPONSE FORMAT:
+MEDICAL: YES/NO
+CONDITION: [specific condition name or "NONE"]
+CONFIDENCE: [0.1-1.0]
+
+EXAMPLES:
+- "chest pain and shortness of breath" → MEDICAL: YES, CONDITION: Acute Coronary Syndrome, CONFIDENCE: 0.9
+- "how to cook pasta safely" → MEDICAL: NO, CONDITION: NONE, CONFIDENCE: 0.95  
+- "persistent headache treatment options" → MEDICAL: YES, CONDITION: Headache Disorder, CONFIDENCE: 0.8
+- "feeling unwell lately" → MEDICAL: YES, CONDITION: NONE, CONFIDENCE: 0.6
+
+Return ONLY the specified format."""
+
+            logger.info("🤖 COMBINED L2+4: Single LLM call for extraction + validation")
+            
+            llama_response = self.llm_client.analyze_medical_query(
+                query=combined_prompt,
+                max_tokens=100,  # Keep concise for condition name
+                timeout=12.0     # Single call timeout
+            )
+            
+            response_text = llama_response.get('extracted_condition', '').strip()
+            logger.info(f"🤖 Combined L2+4 result: {response_text}")
+            
+            # Parse structured response
+            medical_status = self._extract_field(response_text, 'MEDICAL')
+            condition_name = self._extract_field(response_text, 'CONDITION')
+            confidence = self._extract_field(response_text, 'CONFIDENCE')
+            
+            # Non-medical query detection
+            if medical_status == 'NO':
+                logger.info("✅ COMBINED L2+4: Identified as non-medical query")
+                return {
+                    'query_status': 'non_medical',
+                    'message': 'This appears to be a non-medical query.',
+                    'condition': '',
+                    'emergency_keywords': '',
+                    'treatment_keywords': '',
+                    'extraction_method': 'combined_llm_rejection',
+                    'confidence': float(confidence) if confidence else 0.9
+                }
+            
+            # Medical query with specific condition
+            if condition_name and condition_name != 'NONE':
+                standardized_condition = self._extract_condition_from_query(condition_name)
+                if standardized_condition:
+                    condition_details = get_condition_details(standardized_condition)
+                    if condition_details:
+                        logger.info(f"✅ COMBINED L2+4: Success - {standardized_condition}")
+                        return {
+                            'query_status': 'condition_found',
+                            'condition': standardized_condition,
+                            'emergency_keywords': condition_details['emergency'],
+                            'treatment_keywords': condition_details['treatment'],
+                            'extraction_method': 'combined_llm',
+                            'confidence': float(confidence) if confidence else 0.8
+                        }
+            
+            # Medical query but no specific condition extractable
+            if medical_status == 'YES':
+                logger.info("✅ COMBINED L2+4: Medical query confirmed, no specific condition")
+                return {
+                    'query_status': 'medical_no_condition',
+                    'message': 'Medical query confirmed, proceeding to semantic search',
+                    'condition': '',
+                    'emergency_keywords': '',
+                    'treatment_keywords': '',
+                    'extraction_method': 'combined_llm_medical_only',
+                    'confidence': float(confidence) if confidence else 0.6
+                }
+            
+            logger.info("❌ COMBINED L2+4: No valid condition extracted")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Combined L2+4 extraction failed: {e}")
+            return None
+
+    def _extract_field(self, text: str, field_name: str) -> Optional[str]:
+        """
+        Extract specific field from structured LLM response
+        
+        Args:
+            text: Raw LLM response text
+            field_name: Field to extract (MEDICAL, CONDITION, CONFIDENCE)
+            
+        Returns:
+            Extracted field value or None
+        """
+        import re
+        pattern = rf"{field_name}:\s*([^\n,]+)"
+        match = re.search(pattern, text, re.IGNORECASE)
+        return match.group(1).strip() if match else None
 
     def _extract_with_llm(self, user_query: str) -> Optional[Dict[str, str]]:
         """
@@ -606,7 +750,7 @@ Please confirm:
             Dict with invalid query guidance
         """
         return {
-            'type': 'invalid_query',
+            'query_status': 'invalid_query',
             'message': "This is OnCall.AI, a clinical medical assistance platform. "
                        "Please input a medical problem you need help resolving. "
                        "\n\nExamples:\n"
