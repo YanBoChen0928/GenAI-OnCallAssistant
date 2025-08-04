@@ -236,13 +236,7 @@ class llm_Med42_70BClient:
         
         # Detect short response (less than 2 characters)
         if len(response_stripped) < 2:
-            return True
-            
-        # Detect long response - allow some flexibility for detailed medical advice
-        # 750 words ≈ 1000-1200 chars, allow some flexibility to 2500 chars
-        if len(response_stripped) > 2500:  # Changed from 1000 to 2500
-            self.logger.warning(f"Response extremely long: {len(response_stripped)} chars")
-            return True
+            return True            
             
         return False
 

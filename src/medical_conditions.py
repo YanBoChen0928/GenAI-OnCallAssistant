@@ -55,6 +55,14 @@ CONDITION_KEYWORD_MAPPING: Dict[str, Dict[str, str]] = {
     "acute_coronary_syndrome": {
         "emergency": "ACS|chest pain|ECG changes",
         "treatment": "antiplatelet|statins|cardiac monitoring"
+    },
+    "acute seizure": {
+    "emergency": "seizure|convulsion|epilepsy|loss of consciousness",
+    "treatment": "anticonvulsant|benzodiazepine|neurologic assessment"
+    },
+    "seizure disorder": {
+        "emergency": "seizure|status epilepticus|postictal state",
+        "treatment": "antiepileptic drugs|EEG monitoring|neurology consult"
     }
 }
 
