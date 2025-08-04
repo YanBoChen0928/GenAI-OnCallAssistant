@@ -28,22 +28,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Fallback Generation Configuration
+# Fallback Generation Configuration (Simplified Architecture)
 FALLBACK_TIMEOUTS = {
     "primary": 30.0,        # Primary Med42-70B with full RAG context
-    "fallback_1": 15.0,     # Simplified primary generation
-    "fallback_2": 1.0       # RAG template generation (instant)
+    "fallback_1": 1.0,      # RAG template generation (renamed from fallback_2)
+    "fallback_2": 0.1       # Minimal template generation (instant)
 }
 
 FALLBACK_TOKEN_LIMITS = {
     "primary": 1600,         # Full comprehensive medical advice (increased)
-    "fallback_1": 1200,      # Simplified primary result (increased)
-    "fallback_2": 0          # Template-based, no LLM tokens
+    "fallback_1": 0,         # RAG template-based, no LLM tokens (renamed from fallback_2)
+    "fallback_2": 0          # Minimal template-based, no LLM tokens
 }
 
 FALLBACK_CONFIDENCE_SCORES = {
-    "fallback_1": 0.6,      # Med42-70B without RAG context
-    "fallback_2": 0.4       # RAG template only
+    "fallback_1": 0.4,       # RAG template only (renamed from fallback_2)
+    "fallback_2": 0.2        # Minimal template only
 }
 
 FALLBACK_ERROR_TRIGGERS = {
@@ -323,11 +323,12 @@ class MedicalAdviceGenerator:
         {focus_guidance}
 
         Provide guidance with:
+        • Prioritize information and evidence from above sources (PRIMARY)
+        • Use your medical knowledge to organize guidelines into actionable steps 
         • Numbered points (1. 2. 3.) for key steps
         • Line breaks between major sections
         • Highlight medications with dosages and routes
-        • Reference evidence from above sources
-        • Emphasize clinical judgment
+        • Emphasize clinical judgment for individual patient factors (SECONDARY)
 
         IMPORTANT: Keep response under 1000 words. Use concise numbered points. For complex cases with multiple conditions, address the most urgent condition first, then relevant comorbidities. Prioritize actionable clinical steps over theoretical explanations.
 
@@ -532,32 +533,15 @@ class MedicalAdviceGenerator:
         """
         logger.info("🔄 FALLBACK: Attempting fallback generation strategies")
         
-        # Fallback 1: Try to simplify primary result first (if available)
-        if primary_result and primary_result.strip():
-            try:
-                logger.info("📍 FALLBACK 1: Simplifying primary result")
-                user_query = self._extract_user_query_from_prompt(original_prompt)
-                fallback_1_result = self._simplify_primary_result(primary_result, user_query or "medical query")
-                
-                if not fallback_1_result.get('error'):
-                    logger.info("✅ FALLBACK 1: Success - Primary result simplified")
-                    fallback_1_result['fallback_method'] = 'primary_simplified'
-                    fallback_1_result['primary_error'] = primary_error
-                    return fallback_1_result
-                else:
-                    logger.warning(f"❌ FALLBACK 1: Simplification failed - {fallback_1_result.get('error')}")
-                    
-            except Exception as e:
-                logger.error(f"❌ FALLBACK 1: Exception during simplification - {e}")
-        
-        # Fallback 1 Alternative: Med42-70B without RAG context (if no primary result)
+        # Fallback 1: RAG-only template response (renamed from fallback_2)
         try:
-            logger.info("📍 FALLBACK 1: Med42-70B without RAG context")
-            fallback_1_result = self._attempt_simplified_med42(original_prompt, primary_error)
+            logger.info("📍 FALLBACK 1: RAG-only template response")
+            fallback_1_result = self._attempt_rag_template(original_prompt, primary_error)
             
             if not fallback_1_result.get('error'):
-                logger.info("✅ FALLBACK 1: Success - Med42-70B without RAG")
-                fallback_1_result['fallback_method'] = 'med42_simplified'
+                logger.info("✅ FALLBACK 1: Success - RAG template response")
+                # Mark response as fallback method 1 (renamed)
+                fallback_1_result['fallback_method'] = 'rag_template'
                 fallback_1_result['primary_error'] = primary_error
                 return fallback_1_result
             else:
@@ -566,20 +550,23 @@ class MedicalAdviceGenerator:
         except Exception as e:
             logger.error(f"❌ FALLBACK 1: Exception - {e}")
         
-        # Fallback 2: RAG-only template response
+        # Fallback 2: Minimal template response (renamed from fallback_3)
         try:
-            logger.info("📍 FALLBACK 2: RAG-only template response")
-            fallback_2_result = self._attempt_rag_template(original_prompt, primary_error)
+            logger.info("📍 FALLBACK 2: Minimal template response")
+            user_query = self._extract_user_query_from_prompt(original_prompt)
+            minimal_response = self._generate_minimal_template_response(user_query or "medical query")
             
-            if not fallback_2_result.get('error'):
-                logger.info("✅ FALLBACK 2: Success - RAG template response")
-                # Mark response as fallback method 2
-                fallback_2_result['fallback_method'] = 'rag_template'
-                fallback_2_result['primary_error'] = primary_error
-                return fallback_2_result
-            else:
-                logger.warning(f"❌ FALLBACK 2: Failed - {fallback_2_result.get('error')}")
-                
+            logger.info("✅ FALLBACK 2: Success - Minimal template response")
+            return {
+                'extracted_condition': 'minimal_template_response',
+                'confidence': str(FALLBACK_CONFIDENCE_SCORES['fallback_2']),
+                'raw_response': minimal_response,
+                'fallback_method': 'minimal_template',
+                'primary_error': primary_error,
+                'latency': 0.1,
+                'template_based': True
+            }
+            
         except Exception as e:
             logger.error(f"❌ FALLBACK 2: Exception - {e}")
         
@@ -607,75 +594,17 @@ class MedicalAdviceGenerator:
             'latency': 0.0
         }
 
-    def _simplify_primary_result(self, primary_result: str, user_query: str) -> Dict[str, Any]:
+
+    def _attempt_rag_template(self, original_prompt: str, primary_error: str) -> Dict[str, Any]:
         """
-        Simplify the primary result into concise key points (Fallback 1)
+        Generate template-based response using available RAG context (Fallback 1)
         
-        This method takes the successful primary result and simplifies it using Med42-70B
-        to create a more concise version while preserving medical accuracy.
-        
-        Args:
-            primary_result: The successful primary generation result
-            user_query: Original user query for context
-            
-        Returns:
-            Dict with simplified result or error details
-        """
-        logger.info("📍 FALLBACK 1: Simplifying primary result")
-        
-        try:
-            # Create simplification prompt
-            simplification_prompt = f"""Summarize the following medical advice into concise, actionable key points:
-
-Original Medical Advice:
-{primary_result}
-
-Original Query: {user_query}
-
-Provide a clear, concise summary focusing on immediate clinical actions and key recommendations."""
-
-            logger.info(f"🔄 FALLBACK 1: Simplifying with Med42-70B (max_tokens={FALLBACK_TOKEN_LIMITS['fallback_1']}, timeout={FALLBACK_TIMEOUTS['fallback_1']}s)")
-            
-            # Call Med42-70B for simplification
-            result = self.llm_client.analyze_medical_query(
-                query=simplification_prompt,
-                max_tokens=FALLBACK_TOKEN_LIMITS["fallback_1"],
-                timeout=FALLBACK_TIMEOUTS["fallback_1"]
-            )
-            
-            if result.get('status') == 'success' and result.get('response'):
-                simplified_advice = result['response'].strip()
-                
-                if simplified_advice and len(simplified_advice) > 10:
-                    logger.info("✅ FALLBACK 1: Successfully simplified primary result")
-                    return {
-                        'medical_advice': simplified_advice,
-                        'confidence_score': FALLBACK_CONFIDENCE_SCORES["fallback_1"],
-                        'latency': result.get('latency', 0.0),
-                        'fallback_method': 'primary_simplified',
-                        'error': None
-                    }
-                else:
-                    logger.error("❌ FALLBACK 1: Simplified result too short")
-                    return {'error': 'Simplified result too short or empty'}
-            else:
-                error_msg = result.get('error', 'Unknown error during simplification')
-                logger.error(f"❌ FALLBACK 1: Simplification failed - {error_msg}")
-                return {'error': f'Simplification failed: {error_msg}'}
-                
-        except Exception as e:
-            logger.error(f"❌ FALLBACK 1: Exception during simplification - {e}")
-            return {'error': f'Exception during simplification: {str(e)}'}
-
-    def _attempt_simplified_med42(self, original_prompt: str, primary_error: str) -> Dict[str, Any]:
-        """
-        Attempt Med42-70B generation with simplified prompt (Fallback 1)
-        
-        This method retries generation using the same Med42-70B model but with:
-        - Simplified prompt (user query only, no RAG context)
-        - Reduced timeout (15 seconds)
-        - Reduced token limit (300 tokens)
-        - Higher success probability due to reduced complexity
+        This method creates a structured response using retrieved medical guidelines
+        without LLM processing:
+        - Instant response (no API calls)
+        - Template-based formatting
+        - Uses extracted RAG context from original prompt
+        - Lower confidence score (0.4)
         
         Args:
             original_prompt: Original RAG prompt that failed
@@ -770,7 +699,7 @@ Provide a clear, concise summary focusing on immediate clinical actions and key 
         Returns:
             Dict with template response or error details
         """
-        logger.info("📍 FALLBACK 2: RAG-only template response")
+        logger.info("📍 FALLBACK 1: RAG-only template response")
         
         try:
             # Extract user query and RAG context from original prompt
@@ -778,7 +707,7 @@ Provide a clear, concise summary focusing on immediate clinical actions and key 
             rag_context = self._extract_rag_context_from_prompt(original_prompt)
             
             if not user_query:
-                logger.error("❌ FALLBACK 2: Failed to extract user query")
+                logger.error("❌ FALLBACK 1: Failed to extract user query")
                 return {
                     'error': 'Unable to extract user query for template response',
                     'fallback_method': 'rag_template'
@@ -792,11 +721,11 @@ Provide a clear, concise summary focusing on immediate clinical actions and key 
                 # Create full template response with RAG context
                 template_response = self._generate_rag_template_response(user_query, rag_context)
             
-            logger.info("✅ FALLBACK 2: Success - RAG template response")
+            logger.info("✅ FALLBACK 1: Success - RAG template response")
             
             return {
                 'extracted_condition': 'rag_template_response',
-                'confidence': str(FALLBACK_CONFIDENCE_SCORES['fallback_2']),  # 0.4
+                'confidence': str(FALLBACK_CONFIDENCE_SCORES['fallback_1']),  # 0.4 (renamed)
                 'raw_response': template_response,
                 'fallback_method': 'rag_template',
                 'primary_error': primary_error,
