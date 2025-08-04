@@ -31,14 +31,14 @@ logger = logging.getLogger(__name__)
 # Fallback Generation Configuration
 FALLBACK_TIMEOUTS = {
     "primary": 30.0,        # Primary Med42-70B with full RAG context
-    "fallback_1": 15.0,     # Simplified Med42-70B without RAG
+    "fallback_1": 15.0,     # Simplified primary generation
     "fallback_2": 1.0       # RAG template generation (instant)
 }
 
 FALLBACK_TOKEN_LIMITS = {
-    "primary": 1200,         # Full comprehensive medical advice
-    "fallback_1": 600,      # Concise medical guidance
-    "fallback_2": 0         # Template-based, no LLM tokens
+    "primary": 1600,         # Full comprehensive medical advice (increased)
+    "fallback_1": 1200,      # Simplified primary result (increased)
+    "fallback_2": 0          # Template-based, no LLM tokens
 }
 
 FALLBACK_CONFIDENCE_SCORES = {
@@ -363,8 +363,9 @@ class MedicalAdviceGenerator:
             # Check for API errors in response
             if result.get('error'):
                 logger.warning(f"⚠️  Med42-70B returned error: {result['error']}")
-                # Attempt fallback instead of raising exception
-                return self._attempt_fallback_generation(prompt, result['error'])
+                # Pass any available content for potential simplification
+                primary_content = result.get('raw_response', '')
+                return self._attempt_fallback_generation(prompt, result['error'], primary_content)
             
             # Check for empty response
             if not result.get('raw_response', '').strip():
@@ -514,7 +515,7 @@ class MedicalAdviceGenerator:
             "disclaimer": "This system experienced a technical error. Please consult with qualified healthcare providers for medical decisions."
         }
 
-    def _attempt_fallback_generation(self, original_prompt: str, primary_error: str) -> Dict[str, Any]:
+    def _attempt_fallback_generation(self, original_prompt: str, primary_error: str, primary_result: str = None) -> Dict[str, Any]:
         """
         Orchestrate fallback generation attempts with detailed logging
         
@@ -524,20 +525,38 @@ class MedicalAdviceGenerator:
         Args:
             original_prompt: The complete RAG prompt that failed in primary generation
             primary_error: Error details from the primary generation attempt
+            primary_result: Primary result content (if available) for simplification
             
         Returns:
             Dict containing successful fallback response or final error response
         """
         logger.info("🔄 FALLBACK: Attempting fallback generation strategies")
         
-        # Fallback 1: Simplified Med42-70B without RAG context
+        # Fallback 1: Try to simplify primary result first (if available)
+        if primary_result and primary_result.strip():
+            try:
+                logger.info("📍 FALLBACK 1: Simplifying primary result")
+                user_query = self._extract_user_query_from_prompt(original_prompt)
+                fallback_1_result = self._simplify_primary_result(primary_result, user_query or "medical query")
+                
+                if not fallback_1_result.get('error'):
+                    logger.info("✅ FALLBACK 1: Success - Primary result simplified")
+                    fallback_1_result['fallback_method'] = 'primary_simplified'
+                    fallback_1_result['primary_error'] = primary_error
+                    return fallback_1_result
+                else:
+                    logger.warning(f"❌ FALLBACK 1: Simplification failed - {fallback_1_result.get('error')}")
+                    
+            except Exception as e:
+                logger.error(f"❌ FALLBACK 1: Exception during simplification - {e}")
+        
+        # Fallback 1 Alternative: Med42-70B without RAG context (if no primary result)
         try:
             logger.info("📍 FALLBACK 1: Med42-70B without RAG context")
             fallback_1_result = self._attempt_simplified_med42(original_prompt, primary_error)
             
             if not fallback_1_result.get('error'):
                 logger.info("✅ FALLBACK 1: Success - Med42-70B without RAG")
-                # Mark response as fallback method 1
                 fallback_1_result['fallback_method'] = 'med42_simplified'
                 fallback_1_result['primary_error'] = primary_error
                 return fallback_1_result
@@ -587,6 +606,66 @@ class MedicalAdviceGenerator:
             'fallback_method': 'none',
             'latency': 0.0
         }
+
+    def _simplify_primary_result(self, primary_result: str, user_query: str) -> Dict[str, Any]:
+        """
+        Simplify the primary result into concise key points (Fallback 1)
+        
+        This method takes the successful primary result and simplifies it using Med42-70B
+        to create a more concise version while preserving medical accuracy.
+        
+        Args:
+            primary_result: The successful primary generation result
+            user_query: Original user query for context
+            
+        Returns:
+            Dict with simplified result or error details
+        """
+        logger.info("📍 FALLBACK 1: Simplifying primary result")
+        
+        try:
+            # Create simplification prompt
+            simplification_prompt = f"""Summarize the following medical advice into concise, actionable key points:
+
+Original Medical Advice:
+{primary_result}
+
+Original Query: {user_query}
+
+Provide a clear, concise summary focusing on immediate clinical actions and key recommendations."""
+
+            logger.info(f"🔄 FALLBACK 1: Simplifying with Med42-70B (max_tokens={FALLBACK_TOKEN_LIMITS['fallback_1']}, timeout={FALLBACK_TIMEOUTS['fallback_1']}s)")
+            
+            # Call Med42-70B for simplification
+            result = self.llm_client.analyze_medical_query(
+                query=simplification_prompt,
+                max_tokens=FALLBACK_TOKEN_LIMITS["fallback_1"],
+                timeout=FALLBACK_TIMEOUTS["fallback_1"]
+            )
+            
+            if result.get('status') == 'success' and result.get('response'):
+                simplified_advice = result['response'].strip()
+                
+                if simplified_advice and len(simplified_advice) > 10:
+                    logger.info("✅ FALLBACK 1: Successfully simplified primary result")
+                    return {
+                        'medical_advice': simplified_advice,
+                        'confidence_score': FALLBACK_CONFIDENCE_SCORES["fallback_1"],
+                        'latency': result.get('latency', 0.0),
+                        'fallback_method': 'primary_simplified',
+                        'error': None
+                    }
+                else:
+                    logger.error("❌ FALLBACK 1: Simplified result too short")
+                    return {'error': 'Simplified result too short or empty'}
+            else:
+                error_msg = result.get('error', 'Unknown error during simplification')
+                logger.error(f"❌ FALLBACK 1: Simplification failed - {error_msg}")
+                return {'error': f'Simplification failed: {error_msg}'}
+                
+        except Exception as e:
+            logger.error(f"❌ FALLBACK 1: Exception during simplification - {e}")
+            return {'error': f'Exception during simplification: {str(e)}'}
 
     def _attempt_simplified_med42(self, original_prompt: str, primary_error: str) -> Dict[str, Any]:
         """
