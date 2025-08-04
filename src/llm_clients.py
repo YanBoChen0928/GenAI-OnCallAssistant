@@ -101,14 +101,23 @@ class llm_Med42_70BClient:
                         "role": "system", 
                         "content": """You are a medical assistant trained to extract medical conditions.
 
-For medical queries: Extract the most representative medical condition name.
-For non-medical queries: Respond with "NON_MEDICAL_QUERY" and briefly explain why it's not medical.
+                        HANDLING MULTIPLE CONDITIONS:
+                        1. If query contains multiple medical conditions, extract the PRIMARY/ACUTE condition
+                        2. Priority order: Life-threatening emergencies > Acute conditions > Chronic diseases > Symptoms
+                        3. For patient scenarios, focus on the condition requiring immediate medical attention
 
-Examples:
-- Medical: "chest pain" → "Acute Coronary Syndrome"
-- Non-medical: "cooking pasta" → "NON_MEDICAL_QUERY. This is about culinary techniques, not medical conditions."
+                        EXAMPLES:
+                        - Single: "chest pain" → "Acute Coronary Syndrome"
+                        - Multiple: "diabetic patient with chest pain" → "Acute Coronary Syndrome"
+                        - Chronic+Acute: "hypertension patient having seizure" → "Seizure Disorder" 
+                        - Complex: "20-year-old female, porphyria, sudden seizure" → "Acute Seizure"
+                        - Emergency context: "porphyria patient with sudden seizure" → "Seizure Disorder"
 
-DO NOT provide medical advice."""
+                        RESPONSE FORMAT:
+                        - Medical queries: Return ONLY the primary condition name
+                        - Non-medical queries: Return "NON_MEDICAL_QUERY"
+
+                        DO NOT provide explanations or medical advice."""
                     },
                     {
                         "role": "user", 
@@ -128,6 +137,17 @@ DO NOT provide medical advice."""
             # Log raw response and latency
             self.logger.info(f"Raw LLM Response: {response_text}")
             self.logger.info(f"Query Latency: {latency:.4f} seconds")
+            
+            # Detect abnormal response
+            if self._is_abnormal_response(response_text):
+                self.logger.error(f"❌ Abnormal LLM response detected: {response_text[:50]}...")
+                return {
+                    'extracted_condition': '',
+                    'confidence': '0',
+                    'error': 'Abnormal LLM response detected',
+                    'raw_response': response_text,
+                    'latency': latency
+                }
             
             # Extract condition from response
             extracted_condition = self._extract_condition(response_text)
@@ -265,6 +285,47 @@ Focus on: conditions, symptoms, procedures, body systems."""
         
         return response.split('\n')[0].strip() or ""
     
+    def _is_abnormal_response(self, response: str) -> bool:
+        """
+        Detect abnormal LLM responses (e.g., repetitive characters, short/long responses)
+        
+        Args:
+            response: LLM response text
+            
+        Returns:
+            bool: True if response is abnormal, False otherwise
+        """
+        if not response or not response.strip():
+            return True
+            
+        response_stripped = response.strip()
+        
+        # Detect repetitive characters (e.g., !!!!!!!)
+        if len(response_stripped) > 20:
+            unique_chars = len(set(response_stripped))
+            if unique_chars <= 3:  # Only a few characters
+                self.logger.warning(f"Detected repetitive character pattern: {response_stripped[:30]}...")
+                return True
+        
+        # Detect special character patterns
+        abnormal_patterns = ['!!!!', '????', '****', '####', '----']
+        for pattern in abnormal_patterns:
+            if pattern in response_stripped:
+                self.logger.warning(f"Detected abnormal pattern '{pattern}' in response")
+                return True
+        
+        # Detect short response (less than 2 characters)
+        if len(response_stripped) < 2:
+            return True
+            
+        # Detect long response - allow some flexibility for detailed medical advice
+        # 750 words ≈ 1000-1200 chars, allow some flexibility to 2500 chars
+        if len(response_stripped) > 2500:  # Changed from 1000 to 2500
+            self.logger.warning(f"Response extremely long: {len(response_stripped)} chars")
+            return True
+            
+        return False
+
     def _is_rejection_response(self, response: str) -> bool:
         """
         Dual-layer detection: prompt compliance + natural language patterns

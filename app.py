@@ -116,10 +116,10 @@ class OnCallAIInterface:
         """
         if not self.initialized:
             error_msg = f"❌ System not initialized: {self.initialization_error}"
-            return error_msg, error_msg, "{}", "{}"
+            return error_msg, error_msg, "{}"
         
         if not user_query or not user_query.strip():
-            return "Please enter a medical query to get started.", "", "{}", "{}"
+            return "Please enter a medical query to get started.", "", "{}"
         
         processing_start = datetime.now()
         processing_steps = []
@@ -142,7 +142,7 @@ class OnCallAIInterface:
             if condition_result.get('type') == 'invalid_query':
                 non_medical_msg = condition_result.get('message', 'This appears to be a non-medical query.')
                 processing_steps.append("   🚫 Query identified as non-medical")
-                return non_medical_msg, '\n'.join(processing_steps), "{}", "{}"
+                return non_medical_msg, '\n'.join(processing_steps), "{}"
             
             # STEP 1.5: Hospital-Specific Customization (Early retrieval)
             # Run this early since it has its own keyword extraction
