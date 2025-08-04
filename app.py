@@ -103,12 +103,13 @@ class OnCallAIInterface:
             print(f"❌ Pipeline initialization failed: {e}")
             print(f"Traceback: {traceback.format_exc()}")
     
-    def process_medical_query(self, user_query: str, intention_override: Optional[str] = None) -> Tuple[str, str, str, str]:
+    def process_medical_query(self, user_query: str, retrieval_mode: str = "Combine Both", intention_override: Optional[str] = None) -> Tuple[str, str, str, str]:
         """
         Complete medical query processing pipeline
         
         Args:
             user_query: User's medical query
+            retrieval_mode: Retrieval strategy ("General Only", "Hospital Only", "Combine Both")
             intention_override: Optional intention override for testing
             
         Returns:
@@ -126,57 +127,70 @@ class OnCallAIInterface:
         technical_details = {}
         
         try:
-            # STEP 1: Query Processing and Condition Extraction
-            processing_steps.append("🎯 Step 1: Processing medical query and extracting conditions...")
-            step1_start = datetime.now()
-            
-            condition_result = self.user_prompt_processor.extract_condition_keywords(user_query)
-            step1_time = (datetime.now() - step1_start).total_seconds()
-            
-            processing_steps.append(f"   ✅ Condition: {condition_result.get('condition', 'None')}")
-            processing_steps.append(f"   📋 Emergency Keywords: {condition_result.get('emergency_keywords', 'None')}")
-            processing_steps.append(f"   💊 Treatment Keywords: {condition_result.get('treatment_keywords', 'None')}")
-            processing_steps.append(f"   ⏱️ Processing Time: {step1_time:.3f}s")
+            # STEP 1: Query Processing and Condition Extraction (skip for Hospital Only mode)
+            condition_result = None
+            if retrieval_mode in ["General Only", "Combine Both"]:
+                processing_steps.append("🎯 Step 1: Processing medical query and extracting conditions...")
+                step1_start = datetime.now()
+                
+                condition_result = self.user_prompt_processor.extract_condition_keywords(user_query)
+                step1_time = (datetime.now() - step1_start).total_seconds()
+                
+                processing_steps.append(f"   ✅ Condition: {condition_result.get('condition', 'None')}")
+                processing_steps.append(f"   📋 Emergency Keywords: {condition_result.get('emergency_keywords', 'None')}")
+                processing_steps.append(f"   💊 Treatment Keywords: {condition_result.get('treatment_keywords', 'None')}")
+                processing_steps.append(f"   ⏱️ Processing Time: {step1_time:.3f}s")
+            else:
+                processing_steps.append("🎯 Step 1: Skipped (Hospital Only mode)")
+                condition_result = {'condition': '', 'emergency_keywords': '', 'treatment_keywords': '', 'query_status': 'hospital_only'}
             
             # Handle non-medical queries
-            if condition_result.get('type') == 'invalid_query':
+            if condition_result.get('query_status') in ['invalid_query', 'non_medical']:
                 non_medical_msg = condition_result.get('message', 'This appears to be a non-medical query.')
                 processing_steps.append("   🚫 Query identified as non-medical")
                 return non_medical_msg, '\n'.join(processing_steps), "{}"
             
-            # STEP 1.5: Hospital-Specific Customization (Early retrieval)
-            # Run this early since it has its own keyword extraction
+            # Handle medical query with no specific condition
+            if condition_result.get('query_status') == 'medical_no_condition':
+                processing_steps.append("   ℹ️ Medical query confirmed, no specific condition extracted")
+                # Continue with standard processing
+            
+            # STEP 1.5: Hospital-Specific Customization (based on retrieval mode)
             customization_results = []
             retrieval_results = {}  # Initialize early for hospital results
-            try:
-                from customization.customization_pipeline import retrieve_document_chunks
-                
-                processing_steps.append("\n🏥 Step 1.5: Checking hospital-specific guidelines...")
-                custom_start = datetime.now()
-                
-                # Use original user query since hospital module has its own keyword extraction
-                custom_results = retrieve_document_chunks(user_query, top_k=3, llm_client=self.llm_client)
-                custom_time = (datetime.now() - custom_start).total_seconds()
-                
-                if custom_results:
-                    processing_steps.append(f"   📋 Found {len(custom_results)} hospital-specific guidelines")
-                    processing_steps.append(f"   ⏱️ Customization time: {custom_time:.3f}s")
+            
+            if retrieval_mode in ["Hospital Only", "Combine Both"]:
+                try:
+                    from customization.customization_pipeline import retrieve_document_chunks
                     
-                    # Store customization results for later use
-                    customization_results = custom_results
+                    processing_steps.append("\n🏥 Step 1.5: Checking hospital-specific guidelines...")
+                    custom_start = datetime.now()
                     
-                    # Add custom results to retrieval_results for the generator
-                    retrieval_results['customization_results'] = custom_results
-                else:
-                    processing_steps.append("   ℹ️ No hospital-specific guidelines found")
-            except ImportError as e:
-                processing_steps.append(f"   ⚠️ Hospital customization module not available: {str(e)}")
-                if DEBUG_MODE:
-                    print(f"Import error: {traceback.format_exc()}")
-            except Exception as e:
-                processing_steps.append(f"   ⚠️ Customization search skipped: {str(e)}")
-                if DEBUG_MODE:
-                    print(f"Customization error: {traceback.format_exc()}")
+                    # Use original user query since hospital module has its own keyword extraction  
+                    custom_results = retrieve_document_chunks(user_query, top_k=3, llm_client=self.llm_client)
+                    custom_time = (datetime.now() - custom_start).total_seconds()
+                    
+                    if custom_results:
+                        processing_steps.append(f"   📋 Found {len(custom_results)} hospital-specific guidelines")
+                        processing_steps.append(f"   ⏱️ Customization time: {custom_time:.3f}s")
+                        
+                        # Store customization results for later use
+                        customization_results = custom_results
+                        
+                        # Add custom results to retrieval_results for the generator
+                        retrieval_results['customization_results'] = custom_results
+                    else:
+                        processing_steps.append("   ℹ️ No hospital-specific guidelines found")
+                except ImportError as e:
+                    processing_steps.append(f"   ⚠️ Hospital customization module not available: {str(e)}")
+                    if DEBUG_MODE:
+                        print(f"Import error: {traceback.format_exc()}")
+                except Exception as e:
+                    processing_steps.append(f"   ⚠️ Customization search skipped: {str(e)}")
+                    if DEBUG_MODE:
+                        print(f"Customization error: {traceback.format_exc()}")
+            else:
+                processing_steps.append("\n🏥 Step 1.5: Skipped (General Only mode)")
             
             # STEP 2: User Confirmation (Auto-simulated)
             processing_steps.append("\n🤝 Step 2: User confirmation (auto-confirmed for demo)")
@@ -223,32 +237,39 @@ class OnCallAIInterface:
                     else:
                         return no_condition_msg, '\n'.join(processing_steps), "{}"
             
-            processing_steps.append(f"   ✅ Confirmed condition: {condition_result.get('condition')}")
+            if condition_result and condition_result.get('condition'):
+                processing_steps.append(f"   ✅ Confirmed condition: {condition_result.get('condition')}")
+            elif retrieval_mode == "Hospital Only":
+                processing_steps.append("   ✅ Hospital-only mode - proceeding with customization search")
             
-            # STEP 3: Medical Guidelines Retrieval
-            processing_steps.append("\n🔍 Step 3: Retrieving relevant medical guidelines...")
-            step3_start = datetime.now()
-            
-            # Construct search query
-            search_query = f"{condition_result.get('emergency_keywords', '')} {condition_result.get('treatment_keywords', '')}".strip()
-            if not search_query:
-                search_query = condition_result.get('condition', user_query)
-            
-            # Search for general medical guidelines
-            general_results = self.retrieval_system.search(search_query, top_k=5)
-            step3_time = (datetime.now() - step3_start).total_seconds()
-            
-            # Merge with existing retrieval_results (which contains hospital customization)
-            retrieval_results.update(general_results)
-            
-            processed_results = retrieval_results.get('processed_results', [])
-            emergency_count = len([r for r in processed_results if r.get('type') == 'emergency'])
-            treatment_count = len([r for r in processed_results if r.get('type') == 'treatment'])
-            
-            processing_steps.append(f"   📊 Found {len(processed_results)} relevant guidelines")
-            processing_steps.append(f"   🚨 Emergency guidelines: {emergency_count}")
-            processing_steps.append(f"   💊 Treatment guidelines: {treatment_count}")
-            processing_steps.append(f"   ⏱️ Retrieval time: {step3_time:.3f}s")
+            # STEP 3: Medical Guidelines Retrieval (based on retrieval mode)
+            if retrieval_mode in ["General Only", "Combine Both"]:
+                processing_steps.append("\n🔍 Step 3: Retrieving relevant medical guidelines...")
+                step3_start = datetime.now()
+                
+                # Construct search query
+                search_query = f"{condition_result.get('emergency_keywords', '')} {condition_result.get('treatment_keywords', '')}".strip()
+                if not search_query:
+                    search_query = condition_result.get('condition', user_query)
+                
+                # Search for general medical guidelines
+                general_results = self.retrieval_system.search(search_query, top_k=5)
+                step3_time = (datetime.now() - step3_start).total_seconds()
+                
+                # Merge with existing retrieval_results (which contains hospital customization)
+                retrieval_results.update(general_results)
+                
+                processed_results = retrieval_results.get('processed_results', [])
+                emergency_count = len([r for r in processed_results if r.get('type') == 'emergency'])
+                treatment_count = len([r for r in processed_results if r.get('type') == 'treatment'])
+                
+                processing_steps.append(f"   📊 Found {len(processed_results)} relevant guidelines")
+                processing_steps.append(f"   🚨 Emergency guidelines: {emergency_count}")
+                processing_steps.append(f"   💊 Treatment guidelines: {treatment_count}")
+                processing_steps.append(f"   ⏱️ Retrieval time: {step3_time:.3f}s")
+            else:
+                processing_steps.append("\n🔍 Step 3: Skipped (Hospital Only mode)")
+                processed_results = retrieval_results.get('processed_results', [])
             
             # Format retrieved guidelines for display - conditional based on debug mode
             if DEBUG_MODE:
@@ -505,6 +526,14 @@ def create_oncall_interface():
                     max_lines=5
                 )
                 
+                # Retrieval mode selection
+                retrieval_mode = gr.Dropdown(
+                    choices=["General Only", "Hospital Only", "Combine Both"],
+                    label="🔍 Retrieval Mode",
+                    value="Combine Both",
+                    info="Choose which medical guidelines to search"
+                )
+                
                 # Optional intention override for testing
                 if DEBUG_MODE:
                     intention_override = gr.Dropdown(
@@ -610,14 +639,14 @@ def create_oncall_interface():
         # Event handlers
         submit_btn.click(
             fn=oncall_system.process_medical_query,
-            inputs=[user_input, intention_override] if DEBUG_MODE else [user_input],
+            inputs=[user_input, retrieval_mode, intention_override] if DEBUG_MODE else [user_input, retrieval_mode],
             outputs=handler_outputs
         )
         
         # Enter key support
         user_input.submit(
             fn=oncall_system.process_medical_query,
-            inputs=[user_input, intention_override] if DEBUG_MODE else [user_input],
+            inputs=[user_input, retrieval_mode, intention_override] if DEBUG_MODE else [user_input, retrieval_mode],
             outputs=handler_outputs
         )
         

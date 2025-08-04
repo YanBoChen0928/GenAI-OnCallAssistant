@@ -155,7 +155,7 @@ def retrieve_document_chunks(query: str, top_k: int = 5, llm_client=None) -> Lis
             annoy_manager=annoy_manager,  # Pass the ANNOY manager for accelerated search
             strategy="top_p",
             top_p=0.6,  # Top-P threshold: only include chunks that make up 60% of probability mass
-            min_similarity=0.3,  # Minimum 30% similarity threshold
+            min_similarity=0.25,  # Minimum 30% similarity threshold
             similarity_metric="angular"  # Use angular similarity for consistency with ANNOY
         )
         
@@ -163,7 +163,7 @@ def retrieve_document_chunks(query: str, top_k: int = 5, llm_client=None) -> Lis
             print("❌ No chunks found above similarity threshold (30%)")
             return []
         
-        print(f"✅ Retrieved {len(filtered_chunks)} high-quality chunks (Top-P=0.6, min_sim=0.3)")
+        print(f"✅ Retrieved {len(filtered_chunks)} high-quality chunks (Top-P=0.6, min_sim=0.25)")
         
         # Format results to match expected output format
         results = []
