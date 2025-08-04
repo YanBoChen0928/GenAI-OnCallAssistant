@@ -380,13 +380,12 @@ def convert_angular_distance_to_cosine_similarity(angular_distance: float) -> fl
     Convert ANNOY angular distance to cosine similarity.
     
     Args:
-        angular_distance: Angular distance from ANNOY
+        angular_distance: Angular distance from ANNOY (Euclidean distance between normalized vectors)
         
     Returns:
-        Cosine similarity (0 to 1)
+        Cosine similarity (-1 to 1)
     """
-    # Angular distance is related to cosine similarity by:
-    # angular_distance = 2 * arccos(cosine_similarity) / π
-    # Therefore: cosine_similarity = cos(angular_distance * π / 2)
-    import math
-    return math.cos(angular_distance * math.pi / 2)
+    # ANNOY angular distance is the Euclidean distance between normalized vectors
+    # For normalized vectors: ||u - v||² = ||u||² + ||v||² - 2⟨u,v⟩ = 2 - 2⟨u,v⟩
+    # Therefore: cosine_similarity = ⟨u,v⟩ = 1 - (angular_distance² / 2)
+    return 1 - (angular_distance ** 2 / 2)
