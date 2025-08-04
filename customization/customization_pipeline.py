@@ -142,34 +142,85 @@ def retrieve_document_chunks(query: str, top_k: int = 5, llm_client=None) -> Lis
         print("❌ No relevant documents found")
         return []
     
-    # Stage 2: Find relevant chunks within these documents using chunk ANNOY index
+    # Stage 2: Find relevant chunks within these documents using proper threshold filtering
     print(f"🔍 Stage 2: Finding relevant chunks within {len(relevant_docs)} documents")
-    chunks, chunk_distances = annoy_manager.search_chunks_in_documents(
-        query_embedding=query_embedding,
-        document_names=relevant_docs,
-        n_neighbors=top_k,
-        include_distances=True
-    )
     
-    # Convert ANNOY distances to cosine similarities 
-    from indexing.annoy_manager import convert_angular_distance_to_cosine_similarity
-    
-    # Format results
-    results = []
-    for chunk, distance in zip(chunks, chunk_distances):
-        # Convert angular distance to cosine similarity
-        similarity = convert_angular_distance_to_cosine_similarity(distance)
+    # Use the proper chunk retrieval function with Top-P + minimum similarity filtering
+    try:
+        filtered_chunks = find_relevant_chunks_with_fallback(
+            query=search_query,  # Use the processed search query (with keywords if available)
+            model=embedding_model,
+            relevant_docs=relevant_docs,
+            chunk_embeddings=chunk_embeddings,
+            annoy_manager=annoy_manager,  # Pass the ANNOY manager for accelerated search
+            strategy="top_p",
+            top_p=0.6,  # Top-P threshold: only include chunks that make up 60% of probability mass
+            min_similarity=0.3,  # Minimum 30% similarity threshold
+            similarity_metric="angular"  # Use angular similarity for consistency with ANNOY
+        )
         
-        results.append({
-            'document': chunk['document'],
-            'chunk_text': chunk['text'],
-            'score': similarity,
-            'metadata': {
-                'chunk_id': chunk['chunk_id'],
-                'start_char': chunk.get('start_char', 0),
-                'end_char': chunk.get('end_char', 0)
-            }
-        })
-    
-    print(f"✅ Retrieved {len(results)} relevant chunks")
+        if not filtered_chunks:
+            print("❌ No chunks found above similarity threshold (30%)")
+            return []
+        
+        print(f"✅ Retrieved {len(filtered_chunks)} high-quality chunks (Top-P=0.6, min_sim=0.3)")
+        
+        # Format results to match expected output format
+        results = []
+        for chunk in filtered_chunks:
+            results.append({
+                'document': chunk['document'],
+                'chunk_text': chunk['text'],
+                'score': chunk['similarity'],  # This is already a similarity score (0-1)
+                'metadata': {
+                    'chunk_id': chunk['chunk_id'],
+                    'start_char': chunk.get('start_char', 0),
+                    'end_char': chunk.get('end_char', 0)
+                }
+            })
+        
+        print(f"📊 Quality summary:")
+        for i, result in enumerate(results[:3]):  # Show top 3
+            print(f"  {i+1}. {result['document']} (similarity: {result['score']:.3f})")
+            print(f"     Preview: {result['chunk_text'][:100]}...")
+        
+    except Exception as e:
+        print(f"❌ Error in chunk filtering: {e}")
+        print("🔄 Falling back to direct ANNOY search without filtering...")
+        
+        # Fallback: Direct ANNOY search (original behavior)
+        chunks, chunk_distances = annoy_manager.search_chunks_in_documents(
+            query_embedding=query_embedding,
+            document_names=relevant_docs,
+            n_neighbors=top_k,
+            include_distances=True
+        )
+        
+        # Convert ANNOY distances to cosine similarities 
+        from indexing.annoy_manager import convert_angular_distance_to_cosine_similarity
+        
+        # Format results
+        results = []
+        for chunk, distance in zip(chunks, chunk_distances):
+            # Convert angular distance to cosine similarity
+            similarity = convert_angular_distance_to_cosine_similarity(distance)
+            
+            # Apply minimum similarity threshold even in fallback
+            if similarity >= 0.25:  # 25% minimum threshold for fallback
+                results.append({
+                    'document': chunk['document'],
+                    'chunk_text': chunk['text'],
+                    'score': similarity,
+                    'metadata': {
+                        'chunk_id': chunk['chunk_id'],
+                        'start_char': chunk.get('start_char', 0),
+                        'end_char': chunk.get('end_char', 0)
+                    }
+                })
+        
+        if not results:
+            print("❌ No chunks found above minimum similarity threshold (25%)")
+            return []
+        
+        print(f"✅ Fallback: Retrieved {len(results)} chunks above 25% similarity")
     return results
