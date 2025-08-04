@@ -1,5 +1,5 @@
 # 🧠 Virtual environments
-genAIvenv/
+onCallGuideAIvenv/
 .final_project_env/
 rag_env/
 .env
