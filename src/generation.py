@@ -6,6 +6,7 @@ This module handles:
 2. Medical advice generation using Med42-70B
 3. Response formatting and confidence assessment
 4. Integration with multi-dataset architecture
+5. Fallback generation mechanisms for reliability
 
 Author: OnCall.ai Team
 Date: 2025-07-31
@@ -15,6 +16,7 @@ import logging
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 import json
+import re
 
 # Import existing LLM client
 from llm_clients import llm_Med42_70BClient
@@ -25,6 +27,31 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Fallback Generation Configuration
+FALLBACK_TIMEOUTS = {
+    "primary": 30.0,        # Primary Med42-70B with full RAG context
+    "fallback_1": 15.0,     # Simplified Med42-70B without RAG
+    "fallback_2": 1.0       # RAG template generation (instant)
+}
+
+FALLBACK_TOKEN_LIMITS = {
+    "primary": 800,         # Full comprehensive medical advice
+    "fallback_1": 300,      # Concise medical guidance
+    "fallback_2": 0         # Template-based, no LLM tokens
+}
+
+FALLBACK_CONFIDENCE_SCORES = {
+    "fallback_1": 0.6,      # Med42-70B without RAG context
+    "fallback_2": 0.4       # RAG template only
+}
+
+FALLBACK_ERROR_TRIGGERS = {
+    "timeout_errors": ["TimeoutError", "RequestTimeout"],
+    "connection_errors": ["ConnectionError", "HTTPError", "APIError"], 
+    "processing_errors": ["TokenLimitError", "JSONDecodeError", "ValidationError"],
+    "content_errors": ["EmptyResponse", "MalformedResponse"]
+}
 
 class MedicalAdviceGenerator:
     """
@@ -310,31 +337,50 @@ class MedicalAdviceGenerator:
 
     def _generate_with_med42(self, prompt: str) -> Dict[str, Any]:
         """
-        Generate medical advice using Med42-70B
+        Generate medical advice using Med42-70B with comprehensive fallback support
+        
+        This method implements the complete 3-tier fallback system:
+        1. Primary: Med42-70B with full RAG context
+        2. Fallback 1: Med42-70B with simplified prompt  
+        3. Fallback 2: RAG template response
+        4. Final: Error response
         
         Args:
             prompt: Complete RAG prompt
             
         Returns:
-            Generation result with metadata
+            Generation result with metadata and fallback information
         """
         try:
-            logger.info("Calling Med42-70B for medical advice generation")
+            logger.info("🤖 GENERATION: Attempting Med42-70B with RAG context")
             
             result = self.llm_client.analyze_medical_query(
                 query=prompt,
-                max_tokens=800,  # Adjust based on needs
-                timeout=30.0     # Allow more time for complex medical advice
+                max_tokens=FALLBACK_TOKEN_LIMITS["primary"],  # Use configured token limit
+                timeout=FALLBACK_TIMEOUTS["primary"]         # Use configured timeout
             )
             
+            # Check for API errors in response
             if result.get('error'):
-                raise Exception(f"Med42-70B generation error: {result['error']}")
+                logger.warning(f"⚠️  Med42-70B returned error: {result['error']}")
+                # Attempt fallback instead of raising exception
+                return self._attempt_fallback_generation(prompt, result['error'])
             
+            # Check for empty response
+            if not result.get('raw_response', '').strip():
+                logger.warning("⚠️  Med42-70B returned empty response")
+                return self._attempt_fallback_generation(prompt, "Empty response from primary generation")
+            
+            # Primary generation successful
+            logger.info("✅ GENERATION: Med42-70B with RAG successful")
+            # Mark as primary method for tracking
+            result['fallback_method'] = 'primary'
             return result
             
         except Exception as e:
-            logger.error(f"Med42-70B generation failed: {e}")
-            raise
+            logger.error(f"❌ GENERATION: Med42-70B with RAG failed: {e}")
+            # Attempt fallback chain instead of raising exception
+            return self._attempt_fallback_generation(prompt, str(e))
 
     def _format_medical_response(self, user_query: str, generated_advice: Dict[str, Any],
                                 chunks_used: Dict[str, List], intention: Optional[str],
@@ -467,6 +513,424 @@ class MedicalAdviceGenerator:
             },
             "disclaimer": "This system experienced a technical error. Please consult with qualified healthcare providers for medical decisions."
         }
+
+    def _attempt_fallback_generation(self, original_prompt: str, primary_error: str) -> Dict[str, Any]:
+        """
+        Orchestrate fallback generation attempts with detailed logging
+        
+        This function coordinates the fallback chain when primary Med42-70B generation fails.
+        It attempts progressively simpler generation methods while maintaining medical value.
+        
+        Args:
+            original_prompt: The complete RAG prompt that failed in primary generation
+            primary_error: Error details from the primary generation attempt
+            
+        Returns:
+            Dict containing successful fallback response or final error response
+        """
+        logger.info("🔄 FALLBACK: Attempting fallback generation strategies")
+        
+        # Fallback 1: Simplified Med42-70B without RAG context
+        try:
+            logger.info("📍 FALLBACK 1: Med42-70B without RAG context")
+            fallback_1_result = self._attempt_simplified_med42(original_prompt, primary_error)
+            
+            if not fallback_1_result.get('error'):
+                logger.info("✅ FALLBACK 1: Success - Med42-70B without RAG")
+                # Mark response as fallback method 1
+                fallback_1_result['fallback_method'] = 'med42_simplified'
+                fallback_1_result['primary_error'] = primary_error
+                return fallback_1_result
+            else:
+                logger.warning(f"❌ FALLBACK 1: Failed - {fallback_1_result.get('error')}")
+                
+        except Exception as e:
+            logger.error(f"❌ FALLBACK 1: Exception - {e}")
+        
+        # Fallback 2: RAG-only template response
+        try:
+            logger.info("📍 FALLBACK 2: RAG-only template response")
+            fallback_2_result = self._attempt_rag_template(original_prompt, primary_error)
+            
+            if not fallback_2_result.get('error'):
+                logger.info("✅ FALLBACK 2: Success - RAG template response")
+                # Mark response as fallback method 2
+                fallback_2_result['fallback_method'] = 'rag_template'
+                fallback_2_result['primary_error'] = primary_error
+                return fallback_2_result
+            else:
+                logger.warning(f"❌ FALLBACK 2: Failed - {fallback_2_result.get('error')}")
+                
+        except Exception as e:
+            logger.error(f"❌ FALLBACK 2: Exception - {e}")
+        
+        # All fallbacks failed - return comprehensive error response
+        logger.error("🚫 ALL FALLBACKS FAILED: Returning final error response")
+        return self._generate_final_error_response(original_prompt, primary_error)
+
+    def _generate_final_error_response(self, original_prompt: str, primary_error: str) -> Dict[str, Any]:
+        """
+        Generate final error response when all fallback methods fail
+        
+        Args:
+            original_prompt: Original RAG prompt that failed
+            primary_error: Primary generation error details  
+            
+        Returns:
+            Comprehensive error response with fallback attempt details
+        """
+        return {
+            'extracted_condition': '',
+            'confidence': '0',
+            'raw_response': 'All generation methods failed. Please try rephrasing your query or contact technical support.',
+            'error': f"Primary: {primary_error}. All fallback methods failed.",
+            'fallback_method': 'none',
+            'latency': 0.0
+        }
+
+    def _attempt_simplified_med42(self, original_prompt: str, primary_error: str) -> Dict[str, Any]:
+        """
+        Attempt Med42-70B generation with simplified prompt (Fallback 1)
+        
+        This method retries generation using the same Med42-70B model but with:
+        - Simplified prompt (user query only, no RAG context)
+        - Reduced timeout (15 seconds)
+        - Reduced token limit (300 tokens)
+        - Higher success probability due to reduced complexity
+        
+        Args:
+            original_prompt: Original RAG prompt that failed
+            primary_error: Error from primary generation attempt
+            
+        Returns:
+            Dict with generation result or error details
+        """
+        logger.info("📍 FALLBACK 1: Med42-70B without RAG context")
+        
+        try:
+            # Extract user query from complex RAG prompt
+            user_query = self._extract_user_query_from_prompt(original_prompt)
+            
+            if not user_query:
+                logger.error("❌ FALLBACK 1: Failed to extract user query from prompt")
+                return {
+                    'error': 'Unable to extract user query from original prompt',
+                    'fallback_method': 'med42_simplified'
+                }
+            
+            # Create simplified prompt for Med42-70B
+            simplified_prompt = f"As a medical professional, provide concise clinical guidance for the following case: {user_query}"
+            
+            logger.info(f"🔄 FALLBACK 1: Calling Med42-70B with simplified prompt (max_tokens={FALLBACK_TOKEN_LIMITS['fallback_1']}, timeout={FALLBACK_TIMEOUTS['fallback_1']}s)")
+            
+            # Call Med42-70B with reduced parameters
+            result = self.llm_client.analyze_medical_query(
+                query=simplified_prompt,
+                max_tokens=FALLBACK_TOKEN_LIMITS["fallback_1"],  # 300 tokens
+                timeout=FALLBACK_TIMEOUTS["fallback_1"]         # 15 seconds
+            )
+            
+            # Check for API errors
+            if result.get('error'):
+                logger.warning(f"❌ FALLBACK 1: API error - {result['error']}")
+                return {
+                    'error': f"Med42-70B API error: {result['error']}",
+                    'fallback_method': 'med42_simplified',
+                    'primary_error': primary_error
+                }
+            
+            # Check for empty response
+            raw_response = result.get('raw_response', '').strip()
+            if not raw_response:
+                logger.warning("❌ FALLBACK 1: Empty response from Med42-70B")
+                return {
+                    'error': 'Empty response from simplified Med42-70B call',
+                    'fallback_method': 'med42_simplified'
+                }
+            
+            # Success - format response with fallback metadata
+            logger.info("✅ FALLBACK 1: Success - Med42-70B without RAG")
+            
+            # Adjust confidence score for fallback method
+            original_confidence = float(result.get('confidence', '0.5'))
+            fallback_confidence = min(original_confidence, FALLBACK_CONFIDENCE_SCORES['fallback_1'])
+            
+            return {
+                'extracted_condition': result.get('extracted_condition', 'simplified_med42_response'),
+                'confidence': str(fallback_confidence),
+                'raw_response': raw_response,
+                'fallback_method': 'med42_simplified',
+                'primary_error': primary_error,
+                'latency': result.get('latency', 0),
+                'simplified_prompt_used': True
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ FALLBACK 1: Exception during simplified Med42-70B call - {e}")
+            return {
+                'error': f"Exception in simplified Med42-70B: {str(e)}",
+                'fallback_method': 'med42_simplified',
+                'primary_error': primary_error
+            }
+
+    def _attempt_rag_template(self, original_prompt: str, primary_error: str) -> Dict[str, Any]:
+        """
+        Generate template-based response using available RAG context (Fallback 2)
+        
+        This method creates a structured response using retrieved medical guidelines
+        without LLM processing:
+        - Instant response (no API calls)
+        - Template-based formatting
+        - Uses extracted RAG context from original prompt
+        - Lower confidence score (0.4)
+        
+        Args:
+            original_prompt: Original RAG prompt that failed
+            primary_error: Error from primary generation attempt
+            
+        Returns:
+            Dict with template response or error details
+        """
+        logger.info("📍 FALLBACK 2: RAG-only template response")
+        
+        try:
+            # Extract user query and RAG context from original prompt
+            user_query = self._extract_user_query_from_prompt(original_prompt)
+            rag_context = self._extract_rag_context_from_prompt(original_prompt)
+            
+            if not user_query:
+                logger.error("❌ FALLBACK 2: Failed to extract user query")
+                return {
+                    'error': 'Unable to extract user query for template response',
+                    'fallback_method': 'rag_template'
+                }
+            
+            if not rag_context:
+                logger.warning("⚠️  FALLBACK 2: No RAG context available, using minimal template")
+                # Create minimal response without RAG context
+                template_response = self._generate_minimal_template_response(user_query)
+            else:
+                # Create full template response with RAG context
+                template_response = self._generate_rag_template_response(user_query, rag_context)
+            
+            logger.info("✅ FALLBACK 2: Success - RAG template response")
+            
+            return {
+                'extracted_condition': 'rag_template_response',
+                'confidence': str(FALLBACK_CONFIDENCE_SCORES['fallback_2']),  # 0.4
+                'raw_response': template_response,
+                'fallback_method': 'rag_template',
+                'primary_error': primary_error,
+                'latency': 0.1,  # Nearly instant
+                'template_based': True
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ FALLBACK 2: Exception during template generation - {e}")
+            return {
+                'error': f"Exception in RAG template generation: {str(e)}",
+                'fallback_method': 'rag_template',
+                'primary_error': primary_error
+            }
+
+    def _generate_rag_template_response(self, user_query: str, rag_context: str) -> str:
+        """
+        Create structured template response from RAG content
+        
+        Args:
+            user_query: Original user medical question
+            rag_context: Retrieved medical guideline text
+            
+        Returns:
+            Formatted template response string
+        """
+        # Format RAG content for better readability
+        formatted_context = self._format_rag_content(rag_context)
+        
+        template = f"""Based on available medical guidelines for your query: "{user_query}"
+
+CLINICAL GUIDANCE:
+{formatted_context}
+
+IMPORTANT CLINICAL NOTES:
+• This guidance is based on standard medical protocols and guidelines
+• Individual patient factors may require modifications to these recommendations
+• Consider patient-specific contraindications and comorbidities
+• Consult with senior physician or specialist for complex cases
+• Follow local institutional protocols and policies
+
+SYSTEM NOTE:
+This response was generated using medical guidelines only, without advanced clinical reasoning, due to technical limitations with the primary system. For complex cases requiring detailed clinical analysis, please consult directly with medical professionals.
+
+Please ensure appropriate clinical oversight and use professional medical judgment in applying these guidelines."""
+
+        return template
+
+    def _generate_minimal_template_response(self, user_query: str) -> str:
+        """
+        Create minimal template response when no RAG context is available
+        
+        Args:
+            user_query: Original user medical question
+            
+        Returns:
+            Minimal template response string
+        """
+        template = f"""Regarding your medical query: "{user_query}"
+
+SYSTEM STATUS:
+Due to technical difficulties with our medical guidance system, we cannot provide specific clinical recommendations at this time.
+
+RECOMMENDED ACTIONS:
+• Please consult with qualified healthcare providers for immediate clinical guidance
+• Contact your primary care physician or relevant specialist
+• For emergency situations, seek immediate medical attention
+• Consider consulting medical literature or clinical decision support tools
+
+IMPORTANT:
+This system experienced technical limitations that prevented access to our medical guideline database. Professional medical consultation is strongly recommended for this query.
+
+Please try rephrasing your question or contact our technical support if the issue persists."""
+
+        return template
+
+    def _format_rag_content(self, rag_context: str) -> str:
+        """
+        Format RAG context content for better readability in template responses
+        
+        Args:
+            rag_context: Raw RAG context text
+            
+        Returns:
+            Formatted and structured RAG content
+        """
+        try:
+            # Clean up the content
+            lines = rag_context.split('\n')
+            formatted_lines = []
+            
+            for line in lines:
+                line = line.strip()
+                if line and len(line) > 10:  # Skip very short lines
+                    # Add bullet points for better structure
+                    if not line.startswith(('•', '-', '*', '1.', '2.', '3.')):
+                        line = f"• {line}"
+                    formatted_lines.append(line)
+            
+            # Limit to reasonable length
+            if len(formatted_lines) > 10:
+                formatted_lines = formatted_lines[:10]
+                formatted_lines.append("• [Additional guidelines available - truncated for brevity]")
+            
+            return '\n'.join(formatted_lines)
+            
+        except Exception as e:
+            logger.error(f"Error formatting RAG content: {e}")
+            return f"• {rag_context[:500]}..."  # Fallback formatting
+
+    def _extract_user_query_from_prompt(self, rag_prompt: str) -> str:
+        """
+        Extract original user query from complex RAG prompt structure
+        
+        This function parses the structured RAG prompt to extract the original
+        user medical query, which is needed for simplified Med42-70B calls.
+        
+        Args:
+            rag_prompt: Complete RAG prompt with structure like:
+                       'You are an experienced physician...
+                        Clinical Question: {user_query}
+                        Relevant Medical Guidelines: {context}...'
+        
+        Returns:
+            Extracted user query string, or empty string if extraction fails
+        """
+        try:
+            # Method 1: Look for "Clinical Question:" section
+            clinical_question_pattern = r"Clinical Question:\s*\n?\s*(.+?)(?:\n\s*\n|\nRelevant Medical Guidelines|$)"
+            match = re.search(clinical_question_pattern, rag_prompt, re.DOTALL | re.IGNORECASE)
+            
+            if match:
+                extracted_query = match.group(1).strip()
+                logger.info(f"🎯 Extracted user query via 'Clinical Question' pattern: {extracted_query[:50]}...")
+                return extracted_query
+            
+            # Method 2: Look for common medical query patterns at the start
+            # This handles cases where the prompt might be simpler
+            lines = rag_prompt.split('\n')
+            for line in lines:
+                line = line.strip()
+                # Skip system instructions and headers
+                if (line and 
+                    not line.startswith('You are') and 
+                    not line.startswith('Provide') and
+                    not line.startswith('Instructions') and
+                    not line.startswith('Relevant Medical') and
+                    len(line) > 10):
+                    logger.info(f"🎯 Extracted user query via line parsing: {line[:50]}...")
+                    return line
+            
+            # Method 3: Fallback - return the first substantial line
+            for line in lines:
+                line = line.strip()
+                if len(line) > 20 and not line.startswith(('You are', 'As a', 'Provide')):
+                    logger.warning(f"⚠️  Using fallback extraction method: {line[:50]}...")
+                    return line
+                    
+            logger.error("❌ Failed to extract user query from prompt")
+            return ""
+            
+        except Exception as e:
+            logger.error(f"❌ Error extracting user query: {e}")
+            return ""
+
+    def _extract_rag_context_from_prompt(self, rag_prompt: str) -> str:
+        """
+        Extract RAG context/guidelines from complex RAG prompt structure
+        
+        This function extracts the medical guideline content for use in
+        template-based responses (Fallback 2).
+        
+        Args:
+            rag_prompt: Complete RAG prompt containing medical guidelines
+        
+        Returns:
+            Extracted RAG context string, or empty string if extraction fails
+        """
+        try:
+            # Look for "Relevant Medical Guidelines:" section
+            guidelines_pattern = r"Relevant Medical Guidelines:\s*\n?\s*(.+?)(?:\n\s*Instructions:|$)"
+            match = re.search(guidelines_pattern, rag_prompt, re.DOTALL | re.IGNORECASE)
+            
+            if match:
+                extracted_context = match.group(1).strip()
+                logger.info(f"🎯 Extracted RAG context: {len(extracted_context)} characters")
+                return extracted_context
+            
+            # Fallback: look for any substantial medical content
+            lines = rag_prompt.split('\n')
+            context_lines = []
+            in_context_section = False
+            
+            for line in lines:
+                line = line.strip()
+                # Start collecting after finding medical content indicators
+                if any(indicator in line.lower() for indicator in ['guideline', 'protocol', 'treatment', 'management', 'clinical']):
+                    in_context_section = True
+                
+                if in_context_section and len(line) > 20:
+                    context_lines.append(line)
+            
+            if context_lines:
+                extracted_context = '\n'.join(context_lines)
+                logger.info(f"🎯 Extracted RAG context via fallback method: {len(extracted_context)} characters")
+                return extracted_context
+                
+            logger.warning("⚠️  No RAG context found in prompt")
+            return ""
+            
+        except Exception as e:
+            logger.error(f"❌ Error extracting RAG context: {e}")
+            return ""
 
 # Example usage and testing
 def main():
