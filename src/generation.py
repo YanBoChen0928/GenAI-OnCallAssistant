@@ -36,8 +36,8 @@ FALLBACK_TIMEOUTS = {
 }
 
 FALLBACK_TOKEN_LIMITS = {
-    "primary": 800,         # Full comprehensive medical advice
-    "fallback_1": 300,      # Concise medical guidance
+    "primary": 1200,         # Full comprehensive medical advice
+    "fallback_1": 600,      # Concise medical guidance
     "fallback_2": 0         # Template-based, no LLM tokens
 }
 
@@ -329,9 +329,9 @@ class MedicalAdviceGenerator:
         • Reference evidence from above sources
         • Emphasize clinical judgment
 
-        IMPORTANT: Keep response within 700 tokens. If approaching this limit, prioritize the most critical steps and conclude with a brief summary of remaining considerations.
+        IMPORTANT: Keep response under 1000 words. Use concise numbered points. For complex cases with multiple conditions, address the most urgent condition first, then relevant comorbidities. Prioritize actionable clinical steps over theoretical explanations.
 
-        Your response should be concise but comprehensive, suitable for immediate clinical application with appropriate medical caution."""
+        Your response should provide practical clinical guidance suitable for immediate bedside application with appropriate medical caution."""
 
         return prompt
 
@@ -749,20 +749,20 @@ class MedicalAdviceGenerator:
         
         template = f"""Based on available medical guidelines for your query: "{user_query}"
 
-CLINICAL GUIDANCE:
-{formatted_context}
+        CLINICAL GUIDANCE:
+        {formatted_context}
 
-IMPORTANT CLINICAL NOTES:
-• This guidance is based on standard medical protocols and guidelines
-• Individual patient factors may require modifications to these recommendations
-• Consider patient-specific contraindications and comorbidities
-• Consult with senior physician or specialist for complex cases
-• Follow local institutional protocols and policies
+        IMPORTANT CLINICAL NOTES:
+        • This guidance is based on standard medical protocols and guidelines
+        • Individual patient factors may require modifications to these recommendations
+        • Consider patient-specific contraindications and comorbidities
+        • Consult with senior physician or specialist for complex cases
+        • Follow local institutional protocols and policies
 
-SYSTEM NOTE:
-This response was generated using medical guidelines only, without advanced clinical reasoning, due to technical limitations with the primary system. For complex cases requiring detailed clinical analysis, please consult directly with medical professionals.
+        SYSTEM NOTE:
+        This response was generated using medical guidelines only, without advanced clinical reasoning, due to technical limitations with the primary system. For complex cases requiring detailed clinical analysis, please consult directly with medical professionals.
 
-Please ensure appropriate clinical oversight and use professional medical judgment in applying these guidelines."""
+        Please ensure appropriate clinical oversight and use professional medical judgment in applying these guidelines."""
 
         return template
 
@@ -778,19 +778,19 @@ Please ensure appropriate clinical oversight and use professional medical judgme
         """
         template = f"""Regarding your medical query: "{user_query}"
 
-SYSTEM STATUS:
-Due to technical difficulties with our medical guidance system, we cannot provide specific clinical recommendations at this time.
+        SYSTEM STATUS:
+        Due to technical difficulties with our medical guidance system, we cannot provide specific clinical recommendations at this time.
 
-RECOMMENDED ACTIONS:
-• Please consult with qualified healthcare providers for immediate clinical guidance
-• Contact your primary care physician or relevant specialist
-• For emergency situations, seek immediate medical attention
-• Consider consulting medical literature or clinical decision support tools
+        RECOMMENDED ACTIONS:
+        • Please consult with qualified healthcare providers for immediate clinical guidance
+        • Contact your primary care physician or relevant specialist
+        • For emergency situations, seek immediate medical attention
+        • Consider consulting medical literature or clinical decision support tools
 
-IMPORTANT:
-This system experienced technical limitations that prevented access to our medical guideline database. Professional medical consultation is strongly recommended for this query.
+        IMPORTANT:
+        This system experienced technical limitations that prevented access to our medical guideline database. Professional medical consultation is strongly recommended for this query.
 
-Please try rephrasing your question or contact our technical support if the issue persists."""
+        Please try rephrasing your question or contact our technical support if the issue persists."""
 
         return template
 

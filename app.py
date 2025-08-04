@@ -113,10 +113,10 @@ class OnCallAIInterface:
         """
         if not self.initialized:
             error_msg = f"❌ System not initialized: {self.initialization_error}"
-            return error_msg, error_msg, "{}", "{}"
+            return error_msg, error_msg, "{}"
         
         if not user_query or not user_query.strip():
-            return "Please enter a medical query to get started.", "", "{}", "{}"
+            return "Please enter a medical query to get started.", "", "{}"
         
         processing_start = datetime.now()
         processing_steps = []
@@ -139,7 +139,7 @@ class OnCallAIInterface:
             if condition_result.get('type') == 'invalid_query':
                 non_medical_msg = condition_result.get('message', 'This appears to be a non-medical query.')
                 processing_steps.append("   🚫 Query identified as non-medical")
-                return non_medical_msg, '\n'.join(processing_steps), "{}", "{}"
+                return non_medical_msg, '\n'.join(processing_steps), "{}"
             
             # STEP 2: User Confirmation (Auto-simulated)
             processing_steps.append("\n🤝 Step 2: User confirmation (auto-confirmed for demo)")
@@ -235,12 +235,20 @@ class OnCallAIInterface:
             if not DEBUG_MODE:
                 technical_details = self._sanitize_technical_details(technical_details)
             
-            return (
-                medical_advice,
-                '\n'.join(processing_steps),
-                guidelines_display,
-                json.dumps(technical_details, indent=2)
-            )
+            # Conditional return based on DEBUG_MODE
+            if DEBUG_MODE:
+                return (
+                    medical_advice,
+                    '\n'.join(processing_steps),
+                    guidelines_display,
+                    json.dumps(technical_details, indent=2)
+                )
+            else:
+                return (
+                    medical_advice,
+                    '\n'.join(processing_steps),
+                    guidelines_display
+                )
             
         except Exception as e:
             error_msg = f"❌ System error: {str(e)}"
