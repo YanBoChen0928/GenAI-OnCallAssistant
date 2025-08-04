@@ -31,6 +31,9 @@ current_dir = Path(__file__).parent
 src_dir = current_dir / "src"
 sys.path.insert(0, str(src_dir))
 
+# Also add project root to ensure customization module can be imported
+sys.path.insert(0, str(current_dir))
+
 # Import OnCall.ai modules
 try:
     from user_prompt import UserPromptProcessor
@@ -141,14 +144,84 @@ class OnCallAIInterface:
                 processing_steps.append("   🚫 Query identified as non-medical")
                 return non_medical_msg, '\n'.join(processing_steps), "{}", "{}"
             
+            # STEP 1.5: Hospital-Specific Customization (Early retrieval)
+            # Run this early since it has its own keyword extraction
+            customization_results = []
+            retrieval_results = {}  # Initialize early for hospital results
+            try:
+                from customization.customization_pipeline import retrieve_document_chunks
+                
+                processing_steps.append("\n🏥 Step 1.5: Checking hospital-specific guidelines...")
+                custom_start = datetime.now()
+                
+                # Use original user query since hospital module has its own keyword extraction
+                custom_results = retrieve_document_chunks(user_query, top_k=3, llm_client=self.llm_client)
+                custom_time = (datetime.now() - custom_start).total_seconds()
+                
+                if custom_results:
+                    processing_steps.append(f"   📋 Found {len(custom_results)} hospital-specific guidelines")
+                    processing_steps.append(f"   ⏱️ Customization time: {custom_time:.3f}s")
+                    
+                    # Store customization results for later use
+                    customization_results = custom_results
+                    
+                    # Add custom results to retrieval_results for the generator
+                    retrieval_results['customization_results'] = custom_results
+                else:
+                    processing_steps.append("   ℹ️ No hospital-specific guidelines found")
+            except ImportError as e:
+                processing_steps.append(f"   ⚠️ Hospital customization module not available: {str(e)}")
+                if DEBUG_MODE:
+                    print(f"Import error: {traceback.format_exc()}")
+            except Exception as e:
+                processing_steps.append(f"   ⚠️ Customization search skipped: {str(e)}")
+                if DEBUG_MODE:
+                    print(f"Customization error: {traceback.format_exc()}")
+            
             # STEP 2: User Confirmation (Auto-simulated)
             processing_steps.append("\n🤝 Step 2: User confirmation (auto-confirmed for demo)")
             confirmation = self.user_prompt_processor.handle_user_confirmation(condition_result)
             
             if not condition_result.get('condition'):
-                no_condition_msg = "Unable to identify a specific medical condition. Please rephrase your query with more specific medical terms."
                 processing_steps.append("   ⚠️ No medical condition identified")
-                return no_condition_msg, '\n'.join(processing_steps), "{}", "{}"
+                
+                # If we have hospital customization results, we can still try to provide help
+                if customization_results:
+                    processing_steps.append("   ℹ️ Using hospital-specific guidelines to assist...")
+                    
+                    # Create a minimal retrieval_results structure for generation
+                    retrieval_results['processed_results'] = []
+                    
+                    # Skip to generation with hospital results only
+                    processing_steps.append("\n🧠 Step 4: Generating advice based on hospital guidelines...")
+                    gen_start = datetime.now()
+                    
+                    medical_advice_result = self.medical_generator.generate_medical_advice(
+                        condition_result.get('condition', user_query),
+                        retrieval_results,
+                        intention="general"
+                    )
+                    
+                    gen_time = (datetime.now() - gen_start).total_seconds()
+                    medical_advice = medical_advice_result.get('medical_advice', 'Unable to generate advice')
+                    
+                    processing_steps.append(f"   ⏱️ Generation time: {gen_time:.3f}s")
+                    
+                    # Format guidelines display
+                    guidelines_display = f"Hospital Guidelines Found: {len(customization_results)}"
+                    
+                    # Conditional return based on DEBUG_MODE
+                    if DEBUG_MODE:
+                        return (medical_advice, '\n'.join(processing_steps), guidelines_display, "{}")
+                    else:
+                        return (medical_advice, '\n'.join(processing_steps), guidelines_display)
+                else:
+                    # No condition and no hospital results
+                    no_condition_msg = "Unable to identify a specific medical condition. Please rephrase your query with more specific medical terms."
+                    if DEBUG_MODE:
+                        return no_condition_msg, '\n'.join(processing_steps), "{}", "{}"
+                    else:
+                        return no_condition_msg, '\n'.join(processing_steps), "{}"
             
             processing_steps.append(f"   ✅ Confirmed condition: {condition_result.get('condition')}")
             
@@ -161,8 +234,12 @@ class OnCallAIInterface:
             if not search_query:
                 search_query = condition_result.get('condition', user_query)
             
-            retrieval_results = self.retrieval_system.search(search_query, top_k=5)
+            # Search for general medical guidelines
+            general_results = self.retrieval_system.search(search_query, top_k=5)
             step3_time = (datetime.now() - step3_start).total_seconds()
+            
+            # Merge with existing retrieval_results (which contains hospital customization)
+            retrieval_results.update(general_results)
             
             processed_results = retrieval_results.get('processed_results', [])
             emergency_count = len([r for r in processed_results if r.get('type') == 'emergency'])
@@ -178,6 +255,8 @@ class OnCallAIInterface:
                 guidelines_display = self._format_guidelines_display(processed_results)
             else:
                 guidelines_display = self._format_user_friendly_sources(processed_results)
+            
+            # Hospital customization already done in Step 1.5
             
             # STEP 4: Medical Advice Generation
             processing_steps.append("\n🧠 Step 4: Generating evidence-based medical advice...")
@@ -235,12 +314,20 @@ class OnCallAIInterface:
             if not DEBUG_MODE:
                 technical_details = self._sanitize_technical_details(technical_details)
             
-            return (
-                medical_advice,
-                '\n'.join(processing_steps),
-                guidelines_display,
-                json.dumps(technical_details, indent=2)
-            )
+            # Conditional return based on DEBUG_MODE
+            if DEBUG_MODE:
+                return (
+                    medical_advice,
+                    '\n'.join(processing_steps),
+                    guidelines_display,
+                    json.dumps(technical_details, indent=2)
+                )
+            else:
+                return (
+                    medical_advice,
+                    '\n'.join(processing_steps),
+                    guidelines_display
+                )
             
         except Exception as e:
             error_msg = f"❌ System error: {str(e)}"
@@ -252,12 +339,20 @@ class OnCallAIInterface:
                 "query": user_query
             }
             
-            return (
-                "I apologize, but I encountered an error while processing your medical query. Please try rephrasing your question or contact technical support.",
-                '\n'.join(processing_steps),
-                "{}",
-                json.dumps(error_details, indent=2)
-            )
+            # Conditional return based on DEBUG_MODE
+            if DEBUG_MODE:
+                return (
+                    "I apologize, but I encountered an error while processing your medical query. Please try rephrasing your question or contact technical support.",
+                    '\n'.join(processing_steps),
+                    "{}",
+                    json.dumps(error_details, indent=2)
+                )
+            else:
+                return (
+                    "I apologize, but I encountered an error while processing your medical query. Please try rephrasing your question or contact technical support.",
+                    '\n'.join(processing_steps),
+                    "{}"
+                )
     
     def _format_guidelines_display(self, processed_results: List[Dict]) -> str:
         """Format retrieved guidelines for user-friendly display"""
