@@ -5,13 +5,26 @@ This module provides centralized configuration for:
 1. Predefined medical conditions
 2. Condition-to-keyword mappings
 3. Fallback condition keywords
+4. Regular expression matching for flexible condition recognition
 
 Author: OnCall.ai Team
 Date: 2025-07-29
 """
 
 from typing import Dict, Optional
+import re
 
+# Regular Expression Mapping for Flexible Condition Recognition
+CONDITION_REGEX_MAPPING: Dict[str, str] = {
+    r"acute[\s_-]*coronary[\s_-]*syndrome": "acute_coronary_syndrome",
+    r"acute[\s_-]*myocardial[\s_-]*infarction": "acute myocardial infarction",
+    r"acute[\s_-]*ischemic[\s_-]*stroke": "acute_ischemic_stroke",
+    r"hemorrhagic[\s_-]*stroke": "hemorrhagic_stroke", 
+    r"transient[\s_-]*ischemic[\s_-]*attack": "transient_ischemic_attack",
+    r"pulmonary[\s_-]*embolism": "pulmonary embolism",
+    # Handles variants like:
+    # "Acute Coronary Syndrome", "acute_coronary_syndrome", "acute-coronary-syndrome"
+}
 # Comprehensive Condition-to-Keyword Mapping
 CONDITION_KEYWORD_MAPPING: Dict[str, Dict[str, str]] = {
     "acute myocardial infarction": {
@@ -72,7 +85,7 @@ def get_condition_keywords(specific_condition: str) -> Optional[str]:
 
 def validate_condition(condition: str) -> bool:
     """
-    Check if a condition exists in our predefined mapping
+    Check if a condition exists in our predefined mapping with flexible regex matching
     
     Args:
         condition: Medical condition to validate
@@ -80,11 +93,31 @@ def validate_condition(condition: str) -> bool:
     Returns:
         Boolean indicating condition validity
     """
-    return condition.lower() in {k.lower() for k in CONDITION_KEYWORD_MAPPING.keys()}
+    if not condition:
+        return False
+    
+    condition_lower = condition.lower().strip()
+    
+    # Level 1: Direct exact match (fastest)
+    for key in CONDITION_KEYWORD_MAPPING.keys():
+        if key.lower() == condition_lower:
+            return True
+    
+    # Level 2: Regular expression matching (flexible)
+    for regex_pattern, mapped_condition in CONDITION_REGEX_MAPPING.items():
+        if re.search(regex_pattern, condition_lower, re.IGNORECASE):
+            return True
+    
+    # Level 3: Partial matching for key medical terms (fallback)
+    medical_keywords = ['coronary', 'syndrome', 'stroke', 'myocardial', 'embolism', 'ischemic']
+    if any(keyword in condition_lower for keyword in medical_keywords):
+        return True
+    
+    return False
 
 def get_condition_details(condition: str) -> Optional[Dict[str, str]]:
     """
-    Retrieve detailed information for a specific condition
+    Retrieve detailed information for a specific condition with flexible matching
     
     Args:
         condition: Medical condition name
@@ -92,8 +125,22 @@ def get_condition_details(condition: str) -> Optional[Dict[str, str]]:
     Returns:
         Dict with emergency and treatment keywords, or None
     """
-    normalized_condition = condition.lower()
+    if not condition:
+        return None
+    
+    condition_lower = condition.lower().strip()
+    
+    # Level 1: Direct exact match
     for key, value in CONDITION_KEYWORD_MAPPING.items():
-        if key.lower() == normalized_condition:
+        if key.lower() == condition_lower:
             return value
+    
+    # Level 2: Regular expression matching
+    for regex_pattern, mapped_condition in CONDITION_REGEX_MAPPING.items():
+        if re.search(regex_pattern, condition_lower, re.IGNORECASE):
+            # Find the mapped condition in the keyword mapping
+            for key, value in CONDITION_KEYWORD_MAPPING.items():
+                if key.lower() == mapped_condition.lower():
+                    return value
+    
     return None 

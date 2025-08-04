@@ -422,13 +422,24 @@ def create_oncall_interface():
                 
                 submit_btn = gr.Button("🔍 Get Medical Guidance", variant="primary", size="lg")
                 
-                # Example queries
+                # Example queries with categorization
                 gr.Markdown("""
                 ### 💡 Example Queries
-                - "How to treat acute myocardial infarction?"
-                - "Patient with severe chest pain and shortness of breath"
-                - "Emergency protocols for acute stroke management"
-                - "Differential diagnosis for sudden onset chest pain"
+
+                **🔬 Diagnosis-Focused (Recommended - Faster Response):**
+                - "60-year-old patient with hypertension history, sudden chest pain. What are possible causes and how to assess?"
+                - "30-year-old presents with sudden severe headache and neck stiffness. Differential diagnosis?"
+                - "Patient with acute shortness of breath and leg swelling. What should I consider?"
+                
+                **⚕️ Treatment-Focused (Recommended - Faster Response):**
+                - "Suspected acute hemorrhagic stroke. Tell me the next steps to take."
+                - "Confirmed STEMI patient in ED. What is the immediate management protocol?"
+                - "Patient with anaphylaxis reaction. What is the treatment approach?"
+                
+                **🔄 Combined Queries (Longer Response Time - Less Recommended):**
+                - "20-year-old female, no medical history, sudden seizure. What are possible causes and complete management workflow?"
+                
+                *Note: For optimal query efficiency, it's recommended to separate diagnostic assessment and treatment management questions.*
                 """)
         
         # Output sections
