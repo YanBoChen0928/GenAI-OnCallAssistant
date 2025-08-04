@@ -374,3 +374,328 @@ combine_evaluation_results()
 此為評估策略討論，無涉及代碼修改。
 
 **您的理解完全正確！RAG 特有的指標只能在 RAG 系統內部測試，而通用指標可以跨所有模型比較。這樣的分層評估策略非常合理！**
+
+---
+
+## 📊 第七個評估指標（YanBo系統特有）
+
+### 7. 多層級 Fallback 效率（早期攔截率）
+
+**定義：** 系統通過多層級 Fallback 機制在早期層級成功處理查詢的效率
+
+**測量位置：** `src/user_prompt.py` 的 `extract_condition_keywords` 多層級處理邏輯
+
+**計算公式：**
+```
+Early_Interception_Rate = (Level1_Success + Level2_Success) / Total_Queries
+
+其中：
+- Level1_Success = 在預定義映射中直接找到條件的查詢數
+- Level2_Success = 通過LLM抽取成功的查詢數  
+- Total_Queries = 測試查詢總數
+
+時間節省效果：
+Time_Savings = (Late_Avg_Time - Early_Avg_Time) / Late_Avg_Time
+
+早期攔截效率：
+Efficiency_Score = Early_Interception_Rate × (1 + Time_Savings)
+```
+
+**ASCII 流程圖：**
+```
+多層級 Fallback 效率示意圖：
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│ 用戶查詢    │───▶│ Level 1     │───▶│ 直接成功    │
+│ "胸痛診斷"  │    │ 預定義映射  │    │ 35% (快)    │
+└─────────────┘    └─────────────┘    └─────────────┘
+                           │
+                           ▼ (失敗)
+                   ┌─────────────┐    ┌─────────────┐
+                   │ Level 2     │───▶│ LLM抽取成功 │
+                   │ LLM 條件抽取│    │ 40% (中等)  │
+                   └─────────────┘    └─────────────┘
+                           │
+                           ▼ (失敗)
+                   ┌─────────────┐    ┌─────────────┐
+                   │ Level 3-5   │───▶│ 後備成功    │
+                   │ 後續層級    │    │ 20% (慢)    │
+                   └─────────────┘    └─────────────┘
+                           │
+                           ▼ (失敗)
+                   ┌─────────────┐
+                   │ 完全失敗    │
+                   │ 5% (錯誤)   │
+                   └─────────────┘
+
+早期攔截率 = (35% + 40%) = 75% ✅ 目標 > 70%
+```
+
+**實現框架：**
+```python
+# 基於 user_prompt.py 的多層級處理邏輯
+def evaluate_early_interception_efficiency(test_queries: List[str]) -> Dict[str, float]:
+    """評估早期攔截率 - YanBo系統核心優勢"""
+    
+    level1_success = 0  # Level 1: 預定義映射成功
+    level2_success = 0  # Level 2: LLM 抽取成功
+    later_success = 0   # Level 3-5: 後續層級成功
+    total_failures = 0  # 完全失敗
+    
+    early_times = []    # 早期成功的處理時間
+    late_times = []     # 後期成功的處理時間
+    
+    for query in test_queries:
+        # 追蹤每個查詢的成功層級和時間
+        success_level, processing_time = track_query_success_level(query)
+        
+        if success_level == 1:
+            level1_success += 1
+            early_times.append(processing_time)
+        elif success_level == 2:
+            level2_success += 1
+            early_times.append(processing_time)
+        elif success_level in [3, 4, 5]:
+            later_success += 1
+            late_times.append(processing_time)
+        else:
+            total_failures += 1
+    
+    total_queries = len(test_queries)
+    early_success_count = level1_success + level2_success
+    
+    # 計算時間節省效果
+    early_avg_time = sum(early_times) / len(early_times) if early_times else 0
+    late_avg_time = sum(late_times) / len(late_times) if late_times else 0
+    time_savings = (late_avg_time - early_avg_time) / late_avg_time if late_avg_time > 0 else 0
+    
+    # 綜合效率分數
+    early_interception_rate = early_success_count / total_queries
+    efficiency_score = early_interception_rate * (1 + time_savings)
+    
+    return {
+        # 核心指標
+        "early_interception_rate": early_interception_rate,  # 早期攔截率
+        "level1_success_rate": level1_success / total_queries,
+        "level2_success_rate": level2_success / total_queries,
+        
+        # 時間效率
+        "early_avg_time": early_avg_time,
+        "late_avg_time": late_avg_time,
+        "time_savings_rate": time_savings,
+        
+        # 系統健康度
+        "total_success_rate": (total_queries - total_failures) / total_queries,
+        "miss_rate": total_failures / total_queries,
+        
+        # 綜合效率
+        "overall_efficiency_score": efficiency_score,
+        
+        # 詳細分布
+        "success_distribution": {
+            "level1": level1_success,
+            "level2": level2_success, 
+            "later_levels": later_success,
+            "failures": total_failures
+        }
+    }
+
+def track_query_success_level(query: str) -> Tuple[int, float]:
+    """
+    追蹤查詢在哪個層級成功並記錄時間
+    
+    Args:
+        query: 測試查詢
+        
+    Returns:
+        Tuple of (success_level, processing_time)
+    """
+    start_time = time.time()
+    
+    # 模擬 user_prompt.py 的層級處理邏輯
+    try:
+        # Level 1: 檢查預定義映射
+        if check_predefined_mapping(query):
+            processing_time = time.time() - start_time
+            return (1, processing_time)
+        
+        # Level 2: LLM 條件抽取
+        llm_result = llm_client.analyze_medical_query(query)
+        if llm_result.get('extracted_condition'):
+            processing_time = time.time() - start_time
+            return (2, processing_time)
+        
+        # Level 3: 語義搜索
+        semantic_result = semantic_search_fallback(query)
+        if semantic_result:
+            processing_time = time.time() - start_time
+            return (3, processing_time)
+        
+        # Level 4: 醫學驗證
+        validation_result = validate_medical_query(query)
+        if not validation_result:  # 驗證通過
+            processing_time = time.time() - start_time
+            return (4, processing_time)
+        
+        # Level 5: 通用搜索
+        generic_result = generic_medical_search(query)
+        if generic_result:
+            processing_time = time.time() - start_time
+            return (5, processing_time)
+        
+        # 完全失敗
+        processing_time = time.time() - start_time
+        return (0, processing_time)
+        
+    except Exception as e:
+        processing_time = time.time() - start_time
+        return (0, processing_time)
+
+def check_predefined_mapping(query: str) -> bool:
+    """檢查查詢是否在預定義映射中"""
+    # 基於 medical_conditions.py 的 CONDITION_KEYWORD_MAPPING
+    from medical_conditions import CONDITION_KEYWORD_MAPPING
+    
+    query_lower = query.lower()
+    for condition, keywords in CONDITION_KEYWORD_MAPPING.items():
+        if any(keyword.lower() in query_lower for keyword in keywords):
+            return True
+    return False
+```
+
+**目標閾值：** 
+- 早期攔截率 ≥ 70%（前兩層解決）
+- 時間節省率 ≥ 60%（早期比後期快）
+- 總成功率 ≥ 95%（漏接率 < 5%）
+
+---
+
+## 🧪 更新的完整評估流程
+
+### 測試用例設計
+```python
+# 基於 readme.md 中的範例查詢設計測試集
+MEDICAL_TEST_CASES = [
+    # Level 1 預期成功（預定義映射）
+    "患者胸痛怎麼處理？",
+    "心肌梗死的診斷方法？",
+    
+    # Level 2 預期成功（LLM抽取）
+    "60歲男性，有高血壓病史，突發胸痛。可能的原因和評估方法？",
+    "30歲患者突發嚴重頭痛和頸部僵硬。鑑別診斷？", 
+    
+    # Level 3+ 預期成功（複雜查詢）
+    "患者急性呼吸困難和腿部水腫。應該考慮什麼？",
+    "20歲女性，無病史，突發癲癇。可能原因和完整處理流程？",
+    
+    # 邊界測試
+    "疑似急性出血性中風。下一步處理？"
+]
+```
+
+### 更新的評估執行流程
+```python
+def run_complete_evaluation(model_name: str, test_cases: List[str]) -> Dict[str, Any]:
+    """執行完整的七項指標評估"""
+    
+    results = {
+        "model": model_name,
+        "metrics": {},
+        "detailed_results": []
+    }
+    
+    total_latencies = []
+    extraction_successes = []
+    relevance_scores = []
+    coverage_scores = []
+    actionability_scores = []
+    evidence_scores = []
+    fallback_efficiency_scores = []  # 新增
+    
+    for query in test_cases:
+        # 運行模型並測量所有指標
+        
+        # 1. 總處理時長
+        latency_result = measure_total_latency(query)
+        total_latencies.append(latency_result['total_latency'])
+        
+        # 2. 條件抽取成功率
+        extraction_result = evaluate_condition_extraction([query])
+        extraction_successes.append(extraction_result['success_rate'])
+        
+        # 3 & 4. 檢索相關性和覆蓋率
+        retrieval_results = get_retrieval_results(query)
+        relevance_result = evaluate_retrieval_relevance(retrieval_results)
+        relevance_scores.append(relevance_result['average_relevance'])
+        
+        generated_advice = get_generated_advice(query, retrieval_results)
+        coverage_result = evaluate_retrieval_coverage(generated_advice, retrieval_results)
+        coverage_scores.append(coverage_result['coverage'])
+        
+        # 5 & 6. LLM 評估
+        response_data = {
+            'query': query,
+            'advice': generated_advice,
+            'retrieval_results': retrieval_results
+        }
+        
+        actionability_result = evaluate_clinical_actionability([response_data])
+        actionability_scores.append(actionability_result[0]['overall_score'])
+        
+        evidence_result = evaluate_clinical_evidence([response_data])
+        evidence_scores.append(evidence_result[0]['overall_score'])
+        
+        # 7. 多層級 Fallback 效率（新增）
+        if model_name == "Med42-70B_general_RAG":  # 只對YanBo系統測量
+            fallback_result = evaluate_early_interception_efficiency([query])
+            fallback_efficiency_scores.append(fallback_result['overall_efficiency_score'])
+        
+        # 記錄詳細結果...
+    
+    # 計算平均指標
+    results["metrics"] = {
+        "average_latency": sum(total_latencies) / len(total_latencies),
+        "extraction_success_rate": sum(extraction_successes) / len(extraction_successes),
+        "average_relevance": sum(relevance_scores) / len(relevance_scores),
+        "average_coverage": sum(coverage_scores) / len(coverage_scores),
+        "average_actionability": sum(actionability_scores) / len(actionability_scores),
+        "average_evidence_score": sum(evidence_scores) / len(evidence_scores),
+        # 新增指標（只對RAG系統有效）
+        "average_fallback_efficiency": sum(fallback_efficiency_scores) / len(fallback_efficiency_scores) if fallback_efficiency_scores else 0.0
+    }
+    
+    return results
+```
+
+---
+
+## 📊 更新的系統成功標準
+
+### 系統性能目標（七個指標）
+```
+✅ 達標條件：
+1. 總處理時長 ≤ 30秒
+2. 條件抽取成功率 ≥ 80%  
+3. 檢索相關性 ≥ 0.25（基於實際醫學數據）
+4. 檢索覆蓋率 ≥ 60%
+5. 臨床可操作性 ≥ 7.0/10
+6. 臨床證據評分 ≥ 7.5/10
+7. 早期攔截率 ≥ 70%（多層級 Fallback 效率）
+
+🎯 YanBo RAG 系統成功標準：
+- RAG增強版在 5-7 項指標上優於基線 Med42-70B
+- 早期攔截率體現多層級設計的優勢
+- 整體提升幅度 ≥ 15%
+```
+
+### YanBo 系統特有優勢分析
+```
+多層級 Fallback 優勢：
+├── 漏接防護：通過多層級降低失敗率至 < 5%
+├── 時間優化：70%+ 查詢在前兩層快速解決
+├── 系統穩定：即使某層級失敗，後續層級提供保障
+└── 智能分流：不同複雜度查詢自動分配到合適層級
+```
+
+---
+
+**第七個指標已添加完成，專注測量您的多層級 Fallback 系統的早期攔截效率和時間節省效果。**
