@@ -1,4 +1,5 @@
 # Model use
+
 llm model: (for comparison) with our-own version.
 https://huggingface.co/aaditya/Llama3-OpenBioLLM-70B
 https://huggingface.co/m42-health/Llama3-Med42-70B
@@ -12,59 +13,59 @@ https://huggingface.co/meta-llama/Meta-Llama-3-70B-Instruct
 """
 ```
 
-
 ### 評估執行流程
+
 ```python
 def run_complete_evaluation(model_name: str, test_cases: List[str]) -> Dict[str, Any]:
     """執行完整的六項指標評估"""
-    
+
     results = {
         "model": model_name,
         "metrics": {},
         "detailed_results": []
     }
-    
+
     total_latencies = []
     extraction_successes = []
     relevance_scores = []
     coverage_scores = []
     actionability_scores = []
     evidence_scores = []
-    
+
     for query in test_cases:
         # 運行模型並測量所有指標
         start_time = time.time()
-        
+
         # 1. 總處理時長
         latency_result = measure_total_latency(query)
         total_latencies.append(latency_result['total_latency'])
-        
+
         # 2. 條件抽取成功率
         extraction_result = evaluate_condition_extraction([query])
         extraction_successes.append(extraction_result['success_rate'])
-        
+
         # 3 & 4. 檢索相關性和覆蓋率（需要實際檢索結果）
         retrieval_results = get_retrieval_results(query)
         relevance_result = evaluate_retrieval_relevance(retrieval_results)
         relevance_scores.append(relevance_result['average_relevance'])
-        
+
         generated_advice = get_generated_advice(query, retrieval_results)
         coverage_result = evaluate_retrieval_coverage(generated_advice, retrieval_results)
         coverage_scores.append(coverage_result['coverage'])
-        
+
         # 5 & 6. LLM 評估（需要完整回應）
         response_data = {
             'query': query,
             'advice': generated_advice,
             'retrieval_results': retrieval_results
         }
-        
+
         actionability_result = evaluate_clinical_actionability([response_data])
         actionability_scores.append(actionability_result[0]['overall_score'])
-        
+
         evidence_result = evaluate_clinical_evidence([response_data])
         evidence_scores.append(evidence_result[0]['overall_score'])
-        
+
         # 記錄詳細結果
         results["detailed_results"].append({
             "query": query,
@@ -75,7 +76,7 @@ def run_complete_evaluation(model_name: str, test_cases: List[str]) -> Dict[str,
             "actionability": actionability_result[0],
             "evidence": evidence_result[0]
         })
-    
+
     # 計算平均指標
     results["metrics"] = {
         "average_latency": sum(total_latencies) / len(total_latencies),
@@ -85,7 +86,7 @@ def run_complete_evaluation(model_name: str, test_cases: List[str]) -> Dict[str,
         "average_actionability": sum(actionability_scores) / len(actionability_scores),
         "average_evidence_score": sum(evidence_scores) / len(evidence_scores)
     }
-    
+
     return results
 ```
 
@@ -94,41 +95,43 @@ def run_complete_evaluation(model_name: str, test_cases: List[str]) -> Dict[str,
 ## 📈 評估結果分析框架
 
 ### 統計分析
+
 ```python
 def analyze_evaluation_results(results_A: Dict, results_B: Dict, results_C: Dict) -> Dict:
     """比較三個模型的評估結果"""
-    
+
     models = ['Med42-70B_direct', 'RAG_enhanced', 'OpenBioLLM-70B']
     metrics = ['latency', 'extraction_success_rate', 'relevance', 'coverage', 'actionability', 'evidence_score']
-    
+
     comparison = {}
-    
+
     for metric in metrics:
         comparison[metric] = {
             models[0]: results_A['metrics'][f'average_{metric}'],
             models[1]: results_B['metrics'][f'average_{metric}'],
             models[2]: results_C['metrics'][f'average_{metric}']
         }
-        
+
         # 計算相對改進
         baseline = comparison[metric][models[0]]
         rag_improvement = ((comparison[metric][models[1]] - baseline) / baseline) * 100
-        
+
         comparison[metric]['rag_improvement_percent'] = rag_improvement
-    
+
     return comparison
 ```
 
 ### 報告生成
+
 ```python
 def generate_evaluation_report(comparison_results: Dict) -> str:
     """生成評估報告"""
-    
+
     report = f"""
     # OnCall.ai 系統評估報告
-    
+
     ## 評估摘要
-    
+
     | 指標 | Med42-70B | RAG增強版 | OpenBioLLM | RAG改進% |
     |------|-----------|-----------|------------|----------|
     | 處理時長 | {comparison_results['latency']['Med42-70B_direct']:.2f}s | {comparison_results['latency']['RAG_enhanced']:.2f}s | {comparison_results['latency']['OpenBioLLM-70B']:.2f}s | {comparison_results['latency']['rag_improvement_percent']:+.1f}% |
@@ -137,9 +140,9 @@ def generate_evaluation_report(comparison_results: Dict) -> str:
     | 檢索覆蓋率 | - | {comparison_results['coverage']['RAG_enhanced']:.1%} | - | - |
     | 臨床可操作性 | {comparison_results['actionability']['Med42-70B_direct']:.1f}/10 | {comparison_results['actionability']['RAG_enhanced']:.1f}/10 | {comparison_results['actionability']['OpenBioLLM-70B']:.1f}/10 | {comparison_results['actionability']['rag_improvement_percent']:+.1f}% |
     | 臨床證據評分 | {comparison_results['evidence_score']['Med42-70B_direct']:.1f}/10 | {comparison_results['evidence_score']['RAG_enhanced']:.1f}/10 | {comparison_results['evidence_score']['OpenBioLLM-70B']:.1f}/10 | {comparison_results['evidence_score']['rag_improvement_percent']:+.1f}% |
-    
+
     """
-    
+
     return report
 ```
 
@@ -148,6 +151,7 @@ def generate_evaluation_report(comparison_results: Dict) -> str:
 ## 🔧 實驗執行步驟
 
 ### 1. 環境準備
+
 ```bash
 # 設置 HuggingFace token（用於 Inference Providers）
 export HF_TOKEN=your_huggingface_token
@@ -157,48 +161,49 @@ export ONCALL_EVAL_MODE=true
 ```
 
 ### 2. 實驗執行腳本框架
+
 ```python
 # evaluation/run_evaluation.py
 def main():
     """主要評估執行函數"""
-    
+
     # 加載測試用例
     test_cases = MEDICAL_TEST_CASES
-    
+
     # 實驗 A: YanBo 系統評估
     print("🔬 開始實驗 A: YanBo 系統評估")
     results_med42_direct = run_complete_evaluation("Med42-70B_direct", test_cases)
-    results_general_rag = run_complete_evaluation("Med42-70B_general_RAG", test_cases)  
+    results_general_rag = run_complete_evaluation("Med42-70B_general_RAG", test_cases)
     results_openbio = run_complete_evaluation("OpenBioLLM-70B", test_cases)
-    
+
     # 分析和報告
     comparison_A = analyze_evaluation_results(results_med42_direct, results_general_rag, results_openbio)
     report_A = generate_evaluation_report(comparison_A)
-    
+
     # 保存結果
     save_results("evaluation/results/yanbo_evaluation.json", {
         "comparison": comparison_A,
         "detailed_results": [results_med42_direct, results_general_rag, results_openbio]
     })
-    
+
     print("✅ 實驗 A 完成，結果已保存")
-    
+
     # 實驗 B: Jeff 系統評估
     print("🔬 開始實驗 B: Jeff 系統評估")
     results_med42_direct_b = run_complete_evaluation("Med42-70B_direct", test_cases)
     results_customized_rag = run_complete_evaluation("Med42-70B_customized_RAG", test_cases)
     results_openbio_b = run_complete_evaluation("OpenBioLLM-70B", test_cases)
-    
+
     # 分析和報告
     comparison_B = analyze_evaluation_results(results_med42_direct_b, results_customized_rag, results_openbio_b)
     report_B = generate_evaluation_report(comparison_B)
-    
+
     # 保存結果
     save_results("evaluation/results/jeff_evaluation.json", {
         "comparison": comparison_B,
         "detailed_results": [results_med42_direct_b, results_customized_rag, results_openbio_b]
     })
-    
+
     print("✅ 實驗 B 完成，結果已保存")
 
 if __name__ == "__main__":
@@ -206,6 +211,7 @@ if __name__ == "__main__":
 ```
 
 ### 3. 預期評估時間
+
 ```
 總評估時間估算：
 ├── 每個查詢處理時間：~30秒（包含LLM評估）
@@ -219,10 +225,11 @@ if __name__ == "__main__":
 ## 📊 評估成功標準
 
 ### 系統性能目標
+
 ```
 ✅ 達標條件：
 1. 總處理時長 ≤ 30秒
-2. 條件抽取成功率 ≥ 80%  
+2. 條件抽取成功率 ≥ 80%
 3. 檢索相關性 ≥ 0.2
 4. 檢索覆蓋率 ≥ 60%
 5. 臨床可操作性 ≥ 7.0/10
@@ -234,6 +241,7 @@ if __name__ == "__main__":
 ```
 
 ### 比較分析重點
+
 ```
 重點分析維度：
 ├── RAG 對處理時間的影響（可能增加延遲）
@@ -247,6 +255,7 @@ if __name__ == "__main__":
 ## 🛠️ 實施建議
 
 ### 分階段實施
+
 ```
 階段1: 基礎指標實現（1-4項）
 ├── 利用現有 app.py 中的時間測量
@@ -268,6 +277,7 @@ if __name__ == "__main__":
 ```
 
 ### 實施注意事項
+
 ```
 ⚠️ 重要提醒：
 1. 所有評估代碼應獨立於現有系統，避免影響正常運行
@@ -280,3 +290,87 @@ if __name__ == "__main__":
 ---
 
 **評估指南完成。請根據此指南實施評估實驗。**
+
+## Phase 1: Initial Assessment
+
+### Step 1.1 - 分析您的說明
+
+我重新理解了您的意思！
+
+### Step 1.2 - 無不清楚的需求
+
+### Step 1.3 - 確認理解（中文）
+
+完全明白了！您的評估架構是：
+
+## 🎯 **評估指標的測試層級**
+
+### **單獨測試 Retrieval（指標 2, 3, 4）**
+
+```python
+# 只測試 RAG 系統，因為只有 RAG 系統有這些組件：
+retrieval_only_metrics = [
+    "條件抽取成功率",    # 只有您的系統有 user_prompt.py
+    "檢索相關性",        # 只有 RAG 系統有檢索結果
+    "檢索覆蓋率"         # 只有 RAG 系統有檢索→生成的映射
+]
+
+# 測試對象：
+- Med42-70B_general_RAG（您的系統）✅
+- Med42-70B_customized_RAG（Jeff系統）✅
+- Med42-70B_direct（無RAG）❌ 沒有檢索組件
+- OpenBioLLM-70B（無RAG）❌ 沒有檢索組件
+```
+
+### **三模型一起測試（指標 1, 5, 6）**
+
+```python
+# 所有模型都能測試的指標：
+universal_metrics = [
+    "總處理時長",        # 所有模型都有響應時間
+    "臨床可操作性",      # Llama3-70B 評估所有模型的輸出
+    "臨床證據評分"       # Llama3-70B 評估所有模型的輸出
+]
+
+# 測試對象：
+- Med42-70B_direct ✅
+- Med42-70B_general_RAG ✅
+- OpenBioLLM-70B ✅
+```
+
+## 📊 **分層評估策略**
+
+### **階段 1：RAG 系統內部評估**
+
+```python
+# 只測試有 RAG 的系統
+rag_systems = ["Med42-70B_general_RAG", "Med42-70B_customized_RAG"]
+
+# 測試 RAG 特有指標
+for system in rag_systems:
+    evaluate_retrieval_metrics(system)  # 指標 2, 3, 4
+```
+
+### **階段 2：全模型比較評估**
+
+```python
+# 測試所有三個模型
+all_systems = ["Med42-70B_direct", "Med42-70B_general_RAG", "OpenBioLLM-70B"]
+
+# 測試通用指標
+for system in all_systems:
+    evaluate_universal_metrics(system)  # 指標 1, 5, 6
+```
+
+### **階段 3：綜合分析**
+
+```python
+# 合併兩階段結果，生成完整報告
+combine_evaluation_results()
+```
+
+### Step 1.4 - 無視覺修改確認 ✅
+
+此為評估策略討論，無涉及代碼修改。
+
+**您的理解完全正確！RAG 特有的指標只能在 RAG 系統內部測試，而通用指標可以跨所有模型比較。這樣的分層評估策略非常合理！**
