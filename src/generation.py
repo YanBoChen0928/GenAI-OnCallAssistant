@@ -252,8 +252,8 @@ class MedicalAdviceGenerator:
             
             # Format each chunk with metadata
             context_part = f"""
-[Guideline {i}] (Source: {chunk_type.title()}, Relevance: {1-distance:.3f})
-{chunk_text}
+            [Guideline {i}] (Source: {chunk_type.title()}, Relevance: {1-distance:.3f})
+            {chunk_text}
             """.strip()
             
             context_parts.append(context_part)
@@ -283,24 +283,28 @@ class MedicalAdviceGenerator:
         else:
             focus_guidance = "Provide comprehensive medical guidance covering both diagnostic and treatment aspects as appropriate."
         
-        prompt = f"""You are an experienced attending physician providing guidance to a junior clinician in an emergency setting. A colleague is asking for your expert medical opinion.
+        prompt = f"""
+        You are an experienced attending physician providing guidance to a junior clinician in an emergency setting. A colleague is asking for your expert medical opinion.
 
-Clinical Question:
-{user_query}
+        Clinical Question:
+        {user_query}
 
-Relevant Medical Guidelines:
-{context_block}
+        Relevant Medical Guidelines:
+        {context_block}
 
-Instructions:
-{focus_guidance}
+        Instructions:
+        {focus_guidance}
 
-Please provide a clear, actionable response that:
-1. Addresses the specific clinical question asked
-2. References relevant evidence from the provided guidelines
-3. Offers practical, step-by-step guidance when appropriate
-4. Maintains appropriate medical caution and emphasizes the need for clinical judgment
+        Provide guidance with:
+        • Numbered points (1. 2. 3.) for key steps
+        • Line breaks between major sections
+        • Highlight medications with dosages and routes
+        • Reference evidence from above sources
+        • Emphasize clinical judgment
 
-Your response should be concise but comprehensive, suitable for immediate clinical application."""
+        IMPORTANT: Keep response within 700 tokens. If approaching this limit, prioritize the most critical steps and conclude with a brief summary of remaining considerations.
+
+        Your response should be concise but comprehensive, suitable for immediate clinical application with appropriate medical caution."""
 
         return prompt
 
@@ -319,7 +323,7 @@ Your response should be concise but comprehensive, suitable for immediate clinic
             
             result = self.llm_client.analyze_medical_query(
                 query=prompt,
-                max_tokens=500,  # Adjust based on needs
+                max_tokens=800,  # Adjust based on needs
                 timeout=30.0     # Allow more time for complex medical advice
             )
             
