@@ -1,0 +1,5 @@
+1.diagnosis: 60-year-old patient with hypertension history, sudden chest pain. What are possible causes and how to assess?
+
+2.treatment: Suspected acute ischemic stroke. Tell me the next steps to take
+
+3.mixed/complicated: 20 y/f , porphyria, sudden seizure. What are possible causes and complete management workflow?
