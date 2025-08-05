@@ -9,6 +9,8 @@ Date: 2025-07-29
 
 import logging
 import os
+import json
+import re
 from typing import Dict, Optional, Union, List
 from huggingface_hub import InferenceClient
 from dotenv import load_dotenv
@@ -67,6 +69,91 @@ class llm_Med42_70BClient:
             self.logger.error(f"Error Type: {type(e).__name__}")
             self.logger.error(f"Detailed Error: {repr(e)}")
             raise ValueError(f"Failed to initialize Medical LLM client: {str(e)}") from e
+
+    def fix_json_formatting(self, response_text: str) -> str:
+        """
+        Fix common JSON formatting errors
+        
+        Args:
+            response_text: Raw response text that may contain JSON errors
+            
+        Returns:
+            Fixed JSON string
+        """
+        # 1. Fix missing commas between key-value pairs
+        # Look for "value" "key" pattern and add comma
+        fixed = re.sub(r'"\s*\n\s*"', '",\n  "', response_text)
+        
+        # 2. Fix missing commas between values and keys
+        fixed = re.sub(r'"\s*(["\[])', '",\1', fixed)
+        
+        # 3. Remove trailing commas
+        fixed = re.sub(r',\s*}', '}', fixed)
+        fixed = re.sub(r',\s*]', ']', fixed)
+        
+        # 4. Ensure string values are properly quoted
+        fixed = re.sub(r':\s*([^",{}\[\]]+)\s*([,}])', r': "\1"\2', fixed)
+        
+        return fixed
+
+    def parse_medical_response(self, response_text: str) -> Dict:
+        """
+        Enhanced JSON parsing logic with error recovery
+        
+        Args:
+            response_text: Raw response text from Med42-70B
+            
+        Returns:
+            Parsed response dictionary
+        """
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError as e:
+            self.logger.warning(f"Initial JSON parsing failed: {e}")
+            
+            # Attempt to fix common JSON errors
+            try:
+                fixed_response = self.fix_json_formatting(response_text)
+                self.logger.info("Attempting to parse fixed JSON")
+                return json.loads(fixed_response)
+            except json.JSONDecodeError as e2:
+                self.logger.error(f"Fixed JSON parsing also failed: {e2}")
+                
+                # Try to extract partial information
+                try:
+                    return self.extract_partial_medical_info(response_text)
+                except:
+                    # Final fallback format
+                    return {
+                        "extracted_condition": "parsing_error",
+                        "confidence": "0.0",
+                        "is_medical": True,
+                        "raw_response": response_text,
+                        "error": str(e)
+                    }
+
+    def extract_partial_medical_info(self, response_text: str) -> Dict:
+        """
+        Extract partial medical information from malformed response
+        
+        Args:
+            response_text: Malformed response text
+            
+        Returns:
+            Dictionary with extracted information
+        """
+        # Try to extract condition
+        condition_match = re.search(r'"extracted_condition":\s*"([^"]*)"', response_text)
+        confidence_match = re.search(r'"confidence":\s*"([^"]*)"', response_text)
+        medical_match = re.search(r'"is_medical":\s*(true|false)', response_text)
+        
+        return {
+            "extracted_condition": condition_match.group(1) if condition_match else "unknown",
+            "confidence": confidence_match.group(1) if confidence_match else "0.0",
+            "is_medical": medical_match.group(1) == "true" if medical_match else True,
+            "raw_response": response_text,
+            "parsing_method": "partial_extraction"
+        }
 
     def analyze_medical_query(
         self, 
@@ -138,6 +225,13 @@ class llm_Med42_70BClient:
             self.logger.info(f"Raw LLM Response: {response_text}")
             self.logger.info(f"Query Latency: {latency:.4f} seconds")
             
+            # Direct text extraction - system prompt expects plain text response
+            # Since the system prompt instructs LLM to "Return ONLY the primary condition name",
+            # we should directly extract from text instead of attempting JSON parsing
+            extracted_condition = self._extract_condition(response_text)
+            confidence = '0.8'
+            self.logger.info(f"Extracted condition from text: {extracted_condition}")
+            
             # Detect abnormal response
             if self._is_abnormal_response(response_text):
                 self.logger.error(f"❌ Abnormal LLM response detected: {response_text[:50]}...")
@@ -149,15 +243,12 @@ class llm_Med42_70BClient:
                     'latency': latency
                 }
             
-            # Extract condition from response
-            extracted_condition = self._extract_condition(response_text)
-            
             # Log the extracted condition
             self.logger.info(f"Extracted Condition: {extracted_condition}")
             
             return {
                 'extracted_condition': extracted_condition,
-                'confidence': '0.8',
+                'confidence': confidence,
                 'raw_response': response_text,
                 'latency': latency  # Add latency to the return dictionary
             }
@@ -264,7 +355,7 @@ Focus on: conditions, symptoms, procedures, body systems."""
 
     def _extract_condition(self, response: str) -> str:
         """
-        Extract medical condition from model response.
+        Extract medical condition from model response with support for multiple formats.
         
         Args:
             response: Full model-generated text
@@ -272,18 +363,29 @@ Focus on: conditions, symptoms, procedures, body systems."""
         Returns:
             Extracted medical condition or empty string if non-medical
         """
+        from medical_conditions import CONDITION_KEYWORD_MAPPING
+        
         # Check if this is a rejection response first
         if self._is_rejection_response(response):
             return ""
         
-        from medical_conditions import CONDITION_KEYWORD_MAPPING
+        # Try CONDITION: format first (primary format for structured responses)
+        match = re.search(r"CONDITION:\s*(.+)", response, re.IGNORECASE)
+        if not match:
+            # Try Primary condition: format as fallback
+            match = re.search(r"Primary condition:\s*(.+)", response, re.IGNORECASE)
         
-        # Search in known medical conditions
+        if match:
+            value = match.group(1).strip()
+            if value.upper() not in ["NONE", "", "UNKNOWN"]:
+                return value
+        
+        # Final fallback to keyword mapping for backward compatibility
         for condition in CONDITION_KEYWORD_MAPPING.keys():
             if condition.lower() in response.lower():
                 return condition
         
-        return response.split('\n')[0].strip() or ""
+        return ""
     
     def _is_abnormal_response(self, response: str) -> bool:
         """
@@ -438,6 +540,137 @@ def main():
             'error': str(e),
             'total_execution_time': total_execution_time
         }
+
+
+class llm_Llama3_70B_JudgeClient:
+    """
+    Llama3-70B client specifically for LLM judge evaluation.
+    Used for metrics 5-6 evaluation: Clinical Actionability & Evidence Quality.
+    """
+    
+    def __init__(
+        self, 
+        model_name: str = "meta-llama/Meta-Llama-3-70B-Instruct",
+        timeout: float = 60.0
+    ):
+        """
+        Initialize Llama3-70B judge client for evaluation tasks.
+        
+        Args:
+            model_name: Hugging Face model name for Llama3-70B
+            timeout: API call timeout duration (longer for judge evaluation)
+        
+        Note: This client is specifically designed for third-party evaluation,
+              not for medical advice generation.
+        """
+        self.logger = logging.getLogger(__name__)
+        self.timeout = timeout
+        self.model_name = model_name
+        
+        # Get Hugging Face token from environment
+        hf_token = os.getenv('HF_TOKEN')
+        if not hf_token:
+            self.logger.error("HF_TOKEN is missing from environment variables.")
+            raise ValueError(
+                "HF_TOKEN not found in environment variables. "
+                "Please set HF_TOKEN in your .env file or environment."
+            )
+        
+        # Initialize Hugging Face Inference Client for judge evaluation
+        try:
+            self.client = InferenceClient(
+                provider="auto",
+                api_key=hf_token,
+            )
+            self.logger.info(f"Llama3-70B judge client initialized with model: {model_name}")
+            self.logger.info("Judge LLM: Evaluation tool only. Not for medical advice generation.")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize Llama3-70B judge client: {e}")
+            raise
+    
+    def generate_completion(self, prompt: str) -> Dict[str, Union[str, float]]:
+        """
+        Generate completion using Llama3-70B for judge evaluation.
+        
+        Args:
+            prompt: Evaluation prompt for medical advice assessment
+            
+        Returns:
+            Dict containing response content and timing information
+        """
+        import time
+        
+        start_time = time.time()
+        
+        try:
+            self.logger.info(f"Calling Llama3-70B Judge with evaluation prompt ({len(prompt)} chars)")
+            
+            # Call Llama3-70B for judge evaluation
+            completion = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                max_tokens=2048,  # Sufficient for evaluation responses
+                temperature=0.1,   # Low temperature for consistent evaluation
+            )
+            
+            # Extract response content
+            response_content = completion.choices[0].message.content
+            
+            end_time = time.time()
+            latency = end_time - start_time
+            
+            self.logger.info(f"Llama3-70B Judge Response: {response_content[:100]}...")
+            self.logger.info(f"Judge Evaluation Latency: {latency:.4f} seconds")
+            
+            return {
+                'content': response_content,
+                'latency': latency,
+                'model': self.model_name,
+                'timestamp': time.time()
+            }
+            
+        except Exception as e:
+            end_time = time.time()
+            error_latency = end_time - start_time
+            
+            self.logger.error(f"Llama3-70B judge evaluation failed: {e}")
+            self.logger.error(f"Error occurred after {error_latency:.4f} seconds")
+            
+            return {
+                'content': f"Judge evaluation error: {str(e)}",
+                'latency': error_latency,
+                'error': str(e),
+                'model': self.model_name,
+                'timestamp': time.time()
+            }
+    
+    def batch_evaluate(self, evaluation_prompt: str) -> Dict[str, Union[str, float]]:
+        """
+        Specialized method for batch evaluation of medical advice.
+        Alias for generate_completion with judge-specific logging.
+        
+        Args:
+            evaluation_prompt: Batch evaluation prompt containing multiple queries
+            
+        Returns:
+            Dict containing batch evaluation results and timing
+        """
+        self.logger.info("Starting batch judge evaluation...")
+        result = self.generate_completion(evaluation_prompt)
+        
+        if 'error' not in result:
+            self.logger.info(f"Batch evaluation completed successfully in {result['latency']:.2f}s")
+        else:
+            self.logger.error(f"Batch evaluation failed: {result.get('error', 'Unknown error')}")
+        
+        return result
+
 
 if __name__ == "__main__":
     main()
