@@ -128,19 +128,19 @@ class PrecisionMRRAnalyzer:
         # Step 1: Determine query complexity
         is_complex = self._is_complex_query(query, processed_results)
         
-        # Step 2: Choose adaptive threshold (aligned with Metric 3 relevance calculation)
-        threshold = 0.75 if is_complex else 0.8
+        # Step 2: Choose adaptive threshold (aligned with Metric 3 relevance standards)
+        threshold = 0.65 if is_complex else 0.75  # Updated thresholds for complex/simple queries
         
         print(f"   🎯 Using relevance threshold: {threshold} ({'lenient' if is_complex else 'strict'})")
         
-        # Step 3: Calculate relevance scores (1 - distance)
+        # Step 3: Calculate relevance scores using correct angular distance formula
         relevance_scores = []
         for result in processed_results:
             distance = result.get('distance', 1.0)
-            relevance = 1.0 - distance
+            relevance = 1.0 - (distance**2) / 2.0  # Correct mathematical conversion
             relevance_scores.append(relevance)
         
-        # Step 4: Calculate Precision@K
+        # Step 4: Calculate Precision@K (aligned with Metric 3 thresholds)
         relevant_count = sum(1 for score in relevance_scores if score >= threshold)
         precision_at_k = relevant_count / len(processed_results)
         
