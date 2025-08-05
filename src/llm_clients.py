@@ -225,26 +225,12 @@ class llm_Med42_70BClient:
             self.logger.info(f"Raw LLM Response: {response_text}")
             self.logger.info(f"Query Latency: {latency:.4f} seconds")
             
-            # Enhanced response parsing - handle both JSON and text formats
-            try:
-                # Try to parse as JSON first (in case API returns JSON)
-                parsed_response = self.parse_medical_response(response_text)
-                
-                # If it's a valid JSON response, extract condition from it
-                if isinstance(parsed_response, dict) and 'extracted_condition' in parsed_response:
-                    extracted_condition = parsed_response.get('extracted_condition', '')
-                    confidence = parsed_response.get('confidence', '0.8')
-                    self.logger.info(f"Parsed JSON response - Condition: {extracted_condition}")
-                else:
-                    # Fallback to text extraction
-                    extracted_condition = self._extract_condition(response_text)
-                    confidence = '0.8'
-                    
-            except Exception as parse_error:
-                self.logger.warning(f"Response parsing failed: {parse_error}")
-                # Fallback to text extraction
-                extracted_condition = self._extract_condition(response_text)
-                confidence = '0.8'
+            # Direct text extraction - system prompt expects plain text response
+            # Since the system prompt instructs LLM to "Return ONLY the primary condition name",
+            # we should directly extract from text instead of attempting JSON parsing
+            extracted_condition = self._extract_condition(response_text)
+            confidence = '0.8'
+            self.logger.info(f"Extracted condition from text: {extracted_condition}")
             
             # Detect abnormal response
             if self._is_abnormal_response(response_text):
