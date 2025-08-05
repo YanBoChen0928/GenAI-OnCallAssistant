@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # Fallback Generation Configuration (Simplified Architecture)
 FALLBACK_TIMEOUTS = {
-    "primary": 30.0,        # Primary Med42-70B with full RAG context
+    "primary": 60.0,        # Primary Med42-70B increased timeout for stable evaluation
     "fallback_1": 1.0,      # RAG template generation (renamed from fallback_2)
     "fallback_2": 0.1       # Minimal template generation (instant)
 }
@@ -277,7 +277,7 @@ class MedicalAdviceGenerator:
             
             # Sort by relevance (distance) and take top 6
             all_chunks_sorted = sorted(all_chunks, key=lambda x: x.get("distance", 999))
-            selected_chunks = all_chunks_sorted[:6]
+            selected_chunks = all_chunks_sorted[:6]  # Limit to top 6 most relevant
             
             logger.info(f"Selected chunks by relevance (no intention): {len(selected_chunks)} total")
         
@@ -308,14 +308,14 @@ class MedicalAdviceGenerator:
                 # Special formatting for hospital-specific guidelines
                 source_label = "Hospital Protocol"
                 context_part = f"""
-[Guideline {i}] (Source: {source_label}, Relevance: {1-distance:.3f})
-📋 {chunk.get('matched', 'Hospital Document')}
-{chunk_text}
+                [Guideline {i}] (Source: {source_label}, Relevance: {1-distance:.3f})
+                📋 {chunk.get('matched', 'Hospital Document')}
+                {chunk_text}
                 """.strip()
             else:
                 context_part = f"""
-[Guideline {i}] (Source: {chunk_type.title()}, Relevance: {1-distance:.3f})
-{chunk_text}
+                [Guideline {i}] (Source: {chunk_type.title()}, Angular Distance: {distance:.3f})
+                {chunk_text}
                 """.strip()
             
             context_parts.append(context_part)
