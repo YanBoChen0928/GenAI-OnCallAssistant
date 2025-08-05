@@ -137,14 +137,17 @@ class LLMJudgeEvaluator:
         
         for system in systems:
             if system == "rag":
-                pattern = str(results_dir / "medical_outputs_*.json")
+                # Use more specific pattern to exclude direct files
+                pattern = str(results_dir / "medical_outputs_[0-9]*.json")
             elif system == "direct":
                 pattern = str(results_dir / "medical_outputs_direct_*.json")
             else:
                 # Future extension: support other systems
                 pattern = str(results_dir / f"medical_outputs_{system}_*.json")
             
+            print(f"🔍 Searching for {system} with pattern: {pattern}")
             output_files = glob.glob(pattern)
+            print(f"🔍 Found files for {system}: {output_files}")
             
             if not output_files:
                 raise FileNotFoundError(f"No medical outputs files found for {system} system")
@@ -546,6 +549,38 @@ if __name__ == "__main__":
             query_counts = [len(outputs) for outputs in systems_outputs.values()]
             if len(set(query_counts)) > 1:
                 print(f"⚠️ Warning: Systems have different query counts: {dict(zip(systems, query_counts))}")
+            
+            # Validate systems processed same queries (for scientific comparison)
+            print(f"🔍 Validating query consistency across systems...")
+            if len(systems) > 1:
+                first_system_queries = [q['query'] for q in systems_outputs[systems[0]]]
+                for i, system in enumerate(systems[1:], 1):
+                    system_queries = [q['query'] for q in systems_outputs[system]]
+                    
+                    if first_system_queries != system_queries:
+                        print(f"⚠️ Warning: {systems[0]} and {system} processed different queries!")
+                        # Show first difference
+                        for j, (q1, q2) in enumerate(zip(first_system_queries, system_queries)):
+                            if q1 != q2:
+                                print(f"   Query {j+1} differs:")
+                                print(f"   {systems[0]}: {q1[:50]}...")
+                                print(f"   {system}: {q2[:50]}...")
+                                break
+                    else:
+                        print(f"✅ {systems[0]} and {system} processed identical queries")
+            
+            # Validate systems have different model types
+            model_types = set()
+            for system, outputs in systems_outputs.items():
+                if outputs:
+                    model_type = outputs[0].get('model_type', 'unknown')
+                    model_types.add(model_type)
+                    print(f"🏷️ {system.upper()} system model_type: {model_type}")
+            
+            if len(model_types) == 1:
+                print(f"⚠️ Warning: All systems have same model_type - this may not be a valid comparison!")
+            else:
+                print(f"✅ Systems have different model_types: {model_types}")
             
             print(f"📊 Comparing {len(systems)} systems with {min(query_counts)} queries each")
             print(f"🎯 Metrics: 5 (Actionability) + 6 (Evidence Quality)")
