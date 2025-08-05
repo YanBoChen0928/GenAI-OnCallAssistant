@@ -67,6 +67,10 @@ CONDITION_KEYWORD_MAPPING: Dict[str, Dict[str, str]] = {
     "postpartum_hemorrhage": {
     "emergency": "postpartum hemorrhage|uterine atony|placental retention|vaginal laceration",
     "treatment": "uterine massage|IV oxytocin infusion|blood transfusion|surgical intervention"
+    },
+    "bacterial meningitis": {
+    "emergency": "bacterial meningitis|fever|headache|neck stiffness|altered mental status|meningitis|meningeal signs",
+    "treatment": "empiric antibiotics|ceftriaxone|vancomycin|dexamethasone|lumbar puncture"
     }
 }
 

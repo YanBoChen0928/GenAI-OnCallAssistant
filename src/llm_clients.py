@@ -275,7 +275,7 @@ class llm_Med42_70BClient:
 
     def _extract_condition(self, response: str) -> str:
         """
-        Extract medical condition from model response.
+        Extract medical condition from model response with support for multiple formats.
         
         Args:
             response: Full model-generated text
@@ -283,18 +283,29 @@ class llm_Med42_70BClient:
         Returns:
             Extracted medical condition or empty string if non-medical
         """
+        from medical_conditions import CONDITION_KEYWORD_MAPPING
+        
         # Check if this is a rejection response first
         if self._is_rejection_response(response):
             return ""
         
-        from medical_conditions import CONDITION_KEYWORD_MAPPING
+        # Try CONDITION: format first (primary format for structured responses)
+        match = re.search(r"CONDITION:\s*(.+)", response, re.IGNORECASE)
+        if not match:
+            # Try Primary condition: format as fallback
+            match = re.search(r"Primary condition:\s*(.+)", response, re.IGNORECASE)
         
-        # Search in known medical conditions
+        if match:
+            value = match.group(1).strip()
+            if value.upper() not in ["NONE", "", "UNKNOWN"]:
+                return value
+        
+        # Final fallback to keyword mapping for backward compatibility
         for condition in CONDITION_KEYWORD_MAPPING.keys():
             if condition.lower() in response.lower():
                 return condition
         
-        return response.split('\n')[0].strip() or ""
+        return ""
     
     def _is_abnormal_response(self, response: str) -> bool:
         """
