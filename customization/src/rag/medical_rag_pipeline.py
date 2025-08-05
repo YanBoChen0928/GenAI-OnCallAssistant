@@ -7,8 +7,8 @@ from typing import Dict, List, Optional, Tuple
 from sentence_transformers import SentenceTransformer
 
 # Import existing retrieval components
-from retrieval.document_retriever import find_relevant_documents
-from retrieval.chunk_retriever import find_relevant_chunks, get_chunks_for_rag
+from custom_retrieval.document_retriever import find_relevant_documents
+from custom_retrieval.chunk_retriever import find_relevant_chunks, get_chunks_for_rag
 from models.embedding_models import load_biomedbert_model
 
 

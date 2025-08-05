@@ -7,11 +7,11 @@ from data.loaders import load_annotations
 from indexing.document_indexer import build_document_index
 from indexing.embedding_creator import create_tag_embeddings, create_chunk_embeddings
 from indexing.storage import save_document_system, load_document_system, load_document_system_with_annoy
-from retrieval.document_retriever import (
+from custom_retrieval.document_retriever import (
     create_document_tag_mapping, find_relevant_documents, 
     find_relevant_documents_with_fallback
 )
-from retrieval.chunk_retriever import (
+from custom_retrieval.chunk_retriever import (
     find_relevant_chunks, get_documents_for_rag, get_chunks_for_rag,
     find_relevant_chunks_with_fallback
 )
