@@ -64,7 +64,7 @@ CONDITION_KEYWORD_MAPPING: Dict[str, Dict[str, str]] = {
         "emergency": "seizure|status epilepticus|postictal state",
         "treatment": "antiepileptic drugs|EEG monitoring|neurology consult"
     },
-    "postpartum_hemorrhage": {
+    "postpartum hemorrhage": {
     "emergency": "postpartum hemorrhage|uterine atony|placental retention|vaginal laceration",
     "treatment": "uterine massage|IV oxytocin infusion|blood transfusion|surgical intervention"
     },

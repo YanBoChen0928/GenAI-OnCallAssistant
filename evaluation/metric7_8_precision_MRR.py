@@ -36,6 +36,10 @@ from pathlib import Path
 import re
 import statistics
 
+# Relevance threshold constants for adaptive query complexity handling
+COMPLEX_QUERY_RELEVANCE_THRESHOLD = 0.65  # For queries with multiple emergency keywords
+SIMPLE_QUERY_RELEVANCE_THRESHOLD = 0.75   # For straightforward diagnostic queries
+
 class PrecisionMRRAnalyzer:
     """Specialized analyzer for metrics 7-8 using existing comprehensive evaluation data"""
     
@@ -129,7 +133,7 @@ class PrecisionMRRAnalyzer:
         is_complex = self._is_complex_query(query, processed_results)
         
         # Step 2: Choose adaptive threshold (aligned with Metric 3 relevance standards)
-        threshold = 0.65 if is_complex else 0.75  # Updated thresholds for complex/simple queries
+        threshold = COMPLEX_QUERY_RELEVANCE_THRESHOLD if is_complex else SIMPLE_QUERY_RELEVANCE_THRESHOLD  # Updated thresholds for complex/simple queries
         
         print(f"   🎯 Using relevance threshold: {threshold} ({'lenient' if is_complex else 'strict'})")
         
