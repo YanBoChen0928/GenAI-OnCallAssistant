@@ -461,5 +461,136 @@ def main():
             'total_execution_time': total_execution_time
         }
 
+
+class llm_Llama3_70B_JudgeClient:
+    """
+    Llama3-70B client specifically for LLM judge evaluation.
+    Used for metrics 5-6 evaluation: Clinical Actionability & Evidence Quality.
+    """
+    
+    def __init__(
+        self, 
+        model_name: str = "meta-llama/Meta-Llama-3-70B-Instruct",
+        timeout: float = 60.0
+    ):
+        """
+        Initialize Llama3-70B judge client for evaluation tasks.
+        
+        Args:
+            model_name: Hugging Face model name for Llama3-70B
+            timeout: API call timeout duration (longer for judge evaluation)
+        
+        Note: This client is specifically designed for third-party evaluation,
+              not for medical advice generation.
+        """
+        self.logger = logging.getLogger(__name__)
+        self.timeout = timeout
+        self.model_name = model_name
+        
+        # Get Hugging Face token from environment
+        hf_token = os.getenv('HF_TOKEN')
+        if not hf_token:
+            self.logger.error("HF_TOKEN is missing from environment variables.")
+            raise ValueError(
+                "HF_TOKEN not found in environment variables. "
+                "Please set HF_TOKEN in your .env file or environment."
+            )
+        
+        # Initialize Hugging Face Inference Client for judge evaluation
+        try:
+            self.client = InferenceClient(
+                provider="auto",
+                api_key=hf_token,
+            )
+            self.logger.info(f"Llama3-70B judge client initialized with model: {model_name}")
+            self.logger.info("Judge LLM: Evaluation tool only. Not for medical advice generation.")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize Llama3-70B judge client: {e}")
+            raise
+    
+    def generate_completion(self, prompt: str) -> Dict[str, Union[str, float]]:
+        """
+        Generate completion using Llama3-70B for judge evaluation.
+        
+        Args:
+            prompt: Evaluation prompt for medical advice assessment
+            
+        Returns:
+            Dict containing response content and timing information
+        """
+        import time
+        
+        start_time = time.time()
+        
+        try:
+            self.logger.info(f"Calling Llama3-70B Judge with evaluation prompt ({len(prompt)} chars)")
+            
+            # Call Llama3-70B for judge evaluation
+            completion = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                max_tokens=2048,  # Sufficient for evaluation responses
+                temperature=0.1,   # Low temperature for consistent evaluation
+            )
+            
+            # Extract response content
+            response_content = completion.choices[0].message.content
+            
+            end_time = time.time()
+            latency = end_time - start_time
+            
+            self.logger.info(f"Llama3-70B Judge Response: {response_content[:100]}...")
+            self.logger.info(f"Judge Evaluation Latency: {latency:.4f} seconds")
+            
+            return {
+                'content': response_content,
+                'latency': latency,
+                'model': self.model_name,
+                'timestamp': time.time()
+            }
+            
+        except Exception as e:
+            end_time = time.time()
+            error_latency = end_time - start_time
+            
+            self.logger.error(f"Llama3-70B judge evaluation failed: {e}")
+            self.logger.error(f"Error occurred after {error_latency:.4f} seconds")
+            
+            return {
+                'content': f"Judge evaluation error: {str(e)}",
+                'latency': error_latency,
+                'error': str(e),
+                'model': self.model_name,
+                'timestamp': time.time()
+            }
+    
+    def batch_evaluate(self, evaluation_prompt: str) -> Dict[str, Union[str, float]]:
+        """
+        Specialized method for batch evaluation of medical advice.
+        Alias for generate_completion with judge-specific logging.
+        
+        Args:
+            evaluation_prompt: Batch evaluation prompt containing multiple queries
+            
+        Returns:
+            Dict containing batch evaluation results and timing
+        """
+        self.logger.info("Starting batch judge evaluation...")
+        result = self.generate_completion(evaluation_prompt)
+        
+        if 'error' not in result:
+            self.logger.info(f"Batch evaluation completed successfully in {result['latency']:.2f}s")
+        else:
+            self.logger.error(f"Batch evaluation failed: {result.get('error', 'Unknown error')}")
+        
+        return result
+
+
 if __name__ == "__main__":
     main()
