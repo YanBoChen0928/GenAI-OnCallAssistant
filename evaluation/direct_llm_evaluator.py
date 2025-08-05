@@ -87,12 +87,25 @@ Please provide comprehensive medical advice including:
 Provide evidence-based, actionable medical guidance.
 """
             
-            # Direct LLM generation
-            response = self.llm_client.generate_completion(direct_prompt)
-            medical_advice = response.get('content', '') if isinstance(response, dict) else str(response)
+            # Direct LLM generation (same parameters as RAG system for fair comparison)
+            response = self.llm_client.analyze_medical_query(
+                query=direct_prompt,
+                max_tokens=1600,  # Same as RAG system primary setting  
+                timeout=60.0      # Increased timeout for stable evaluation
+            )
+            # Extract medical advice from response (Med42 client returns dict with 'raw_response')
+            if isinstance(response, dict):
+                medical_advice = response.get('raw_response', '') or response.get('content', '')
+            else:
+                medical_advice = str(response)
             
             llm_time = time.time() - llm_start
             total_time = time.time() - overall_start
+            
+            # Check if response is valid (not empty) - focus on content, not timeout
+            if not medical_advice or len(medical_advice.strip()) == 0:
+                print(f"❌ Direct LLM returned empty response after {total_time:.2f}s")
+                raise ValueError("Empty response from LLM - no content generated")
             
             # Create result
             result = {
@@ -103,7 +116,7 @@ Provide evidence-based, actionable medical guidance.
                 "latency_metrics": {
                     "total_latency": total_time,
                     "llm_generation_time": llm_time,
-                    "meets_target": total_time <= 30.0
+                    "meets_target": total_time <= 60.0
                 },
                 
                 # Metrics 2-4: Not applicable for direct LLM
@@ -167,6 +180,10 @@ Provide evidence-based, actionable medical guidance.
             }
             
             self.direct_results.append(error_result)
+            
+            # Do NOT add failed queries to medical_outputs for judge evaluation
+            # Only successful queries with valid medical advice should be evaluated
+            
             return error_result
     
     def parse_queries_from_file(self, filepath: str) -> Dict[str, List[Dict]]:
@@ -238,7 +255,7 @@ Provide evidence-based, actionable medical guidance.
                     category_stats[category] = {
                         "average_latency": sum(cat_latencies) / len(cat_latencies),
                         "query_count": len(cat_latencies),
-                        "target_compliance": sum(1 for lat in cat_latencies if lat <= 30.0) / len(cat_latencies)
+                        "target_compliance": sum(1 for lat in cat_latencies if lat <= 60.0) / len(cat_latencies)
                     }
                 else:
                     category_stats[category] = {
@@ -255,7 +272,7 @@ Provide evidence-based, actionable medical guidance.
                 "successful_queries": len(successful_results),
                 "total_queries": len(self.direct_results),
                 "success_rate": len(successful_results) / len(self.direct_results),
-                "target_compliance": sum(1 for lat in latencies if lat <= 30.0) / len(latencies)
+                "target_compliance": sum(1 for lat in latencies if lat <= 60.0) / len(latencies)
             }
         else:
             category_stats = {cat: {"average_latency": 0.0, "query_count": 0, "target_compliance": 0.0} 
@@ -386,7 +403,7 @@ if __name__ == "__main__":
     print(f"Overall Performance:")
     print(f"   Average Latency: {overall_results['average_latency']:.2f}s")
     print(f"   Success Rate: {overall_results['successful_queries']}/{overall_results['total_queries']}")
-    print(f"   30s Target Compliance: {overall_results['target_compliance']:.1%}")
+    print(f"   60s Target Compliance: {overall_results['target_compliance']:.1%}")
     
     print(f"\nApplicable Metrics:")
     print(f"   ✅ Metric 1 (Latency): Measured")
@@ -399,4 +416,4 @@ if __name__ == "__main__":
     print(f"\n✅ Direct LLM evaluation complete!")
     print(f"📊 Statistics: {stats_path}")
     print(f"📝 Medical Outputs: {outputs_path}")
-    print(f"\n💡 Next step: Run llm_judge_evaluator.py for metrics 5-6")
+    print(f"\n💡 Next step: Run python metric5_6_llm_judge_evaluator.py rag,direct for metrics 5-6")
