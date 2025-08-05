@@ -277,7 +277,7 @@ class MedicalAdviceGenerator:
             
             # Sort by relevance (distance) and take top 6
             all_chunks_sorted = sorted(all_chunks, key=lambda x: x.get("distance", 999))
-            selected_chunks = all_chunks_sorted[:6]
+            selected_chunks = all_chunks_sorted[:6]  # Limit to top 6 most relevant
             
             logger.info(f"Selected chunks by relevance (no intention): {len(selected_chunks)} total")
         
