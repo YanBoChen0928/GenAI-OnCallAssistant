@@ -9,6 +9,8 @@ Date: 2025-07-29
 
 import logging
 import os
+import json
+import re
 from typing import Dict, Optional, Union
 from huggingface_hub import InferenceClient
 from dotenv import load_dotenv
@@ -67,6 +69,91 @@ class llm_Med42_70BClient:
             self.logger.error(f"Error Type: {type(e).__name__}")
             self.logger.error(f"Detailed Error: {repr(e)}")
             raise ValueError(f"Failed to initialize Medical LLM client: {str(e)}") from e
+
+    def fix_json_formatting(self, response_text: str) -> str:
+        """
+        Fix common JSON formatting errors
+        
+        Args:
+            response_text: Raw response text that may contain JSON errors
+            
+        Returns:
+            Fixed JSON string
+        """
+        # 1. Fix missing commas between key-value pairs
+        # Look for "value" "key" pattern and add comma
+        fixed = re.sub(r'"\s*\n\s*"', '",\n  "', response_text)
+        
+        # 2. Fix missing commas between values and keys
+        fixed = re.sub(r'"\s*(["\[])', '",\1', fixed)
+        
+        # 3. Remove trailing commas
+        fixed = re.sub(r',\s*}', '}', fixed)
+        fixed = re.sub(r',\s*]', ']', fixed)
+        
+        # 4. Ensure string values are properly quoted
+        fixed = re.sub(r':\s*([^",{}\[\]]+)\s*([,}])', r': "\1"\2', fixed)
+        
+        return fixed
+
+    def parse_medical_response(self, response_text: str) -> Dict:
+        """
+        Enhanced JSON parsing logic with error recovery
+        
+        Args:
+            response_text: Raw response text from Med42-70B
+            
+        Returns:
+            Parsed response dictionary
+        """
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError as e:
+            self.logger.warning(f"Initial JSON parsing failed: {e}")
+            
+            # Attempt to fix common JSON errors
+            try:
+                fixed_response = self.fix_json_formatting(response_text)
+                self.logger.info("Attempting to parse fixed JSON")
+                return json.loads(fixed_response)
+            except json.JSONDecodeError as e2:
+                self.logger.error(f"Fixed JSON parsing also failed: {e2}")
+                
+                # Try to extract partial information
+                try:
+                    return self.extract_partial_medical_info(response_text)
+                except:
+                    # Final fallback format
+                    return {
+                        "extracted_condition": "parsing_error",
+                        "confidence": "0.0",
+                        "is_medical": True,
+                        "raw_response": response_text,
+                        "error": str(e)
+                    }
+
+    def extract_partial_medical_info(self, response_text: str) -> Dict:
+        """
+        Extract partial medical information from malformed response
+        
+        Args:
+            response_text: Malformed response text
+            
+        Returns:
+            Dictionary with extracted information
+        """
+        # Try to extract condition
+        condition_match = re.search(r'"extracted_condition":\s*"([^"]*)"', response_text)
+        confidence_match = re.search(r'"confidence":\s*"([^"]*)"', response_text)
+        medical_match = re.search(r'"is_medical":\s*(true|false)', response_text)
+        
+        return {
+            "extracted_condition": condition_match.group(1) if condition_match else "unknown",
+            "confidence": confidence_match.group(1) if confidence_match else "0.0",
+            "is_medical": medical_match.group(1) == "true" if medical_match else True,
+            "raw_response": response_text,
+            "parsing_method": "partial_extraction"
+        }
 
     def analyze_medical_query(
         self, 
@@ -138,6 +225,13 @@ class llm_Med42_70BClient:
             self.logger.info(f"Raw LLM Response: {response_text}")
             self.logger.info(f"Query Latency: {latency:.4f} seconds")
             
+            # Direct text extraction - system prompt expects plain text response
+            # Since the system prompt instructs LLM to "Return ONLY the primary condition name",
+            # we should directly extract from text instead of attempting JSON parsing
+            extracted_condition = self._extract_condition(response_text)
+            confidence = '0.8'
+            self.logger.info(f"Extracted condition from text: {extracted_condition}")
+            
             # Detect abnormal response
             if self._is_abnormal_response(response_text):
                 self.logger.error(f"❌ Abnormal LLM response detected: {response_text[:50]}...")
@@ -149,15 +243,12 @@ class llm_Med42_70BClient:
                     'latency': latency
                 }
             
-            # Extract condition from response
-            extracted_condition = self._extract_condition(response_text)
-            
             # Log the extracted condition
             self.logger.info(f"Extracted Condition: {extracted_condition}")
             
             return {
                 'extracted_condition': extracted_condition,
-                'confidence': '0.8',
+                'confidence': confidence,
                 'raw_response': response_text,
                 'latency': latency  # Add latency to the return dictionary
             }
