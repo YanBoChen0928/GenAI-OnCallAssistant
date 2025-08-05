@@ -71,6 +71,10 @@ CONDITION_KEYWORD_MAPPING: Dict[str, Dict[str, str]] = {
     "bacterial meningitis": {
     "emergency": "bacterial meningitis|fever|headache|neck stiffness|altered mental status|meningitis|meningeal signs",
     "treatment": "empiric antibiotics|ceftriaxone|vancomycin|dexamethasone|lumbar puncture"
+    },
+    "anaphylaxis": {
+    "emergency": "anaphylaxis|allergic reaction|airway compromise|hypotension",
+    "treatment": "epinephrine|adrenaline|IV fluids|antihistamine|corticosteroids"
     }
 }
 
