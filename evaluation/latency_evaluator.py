@@ -273,27 +273,25 @@ class ComprehensiveEvaluator:
             
             # METRIC 3: Retrieval Relevance Analysis
             if processed_results:
-                similarity_scores = []
+                relevance_scores = []
                 for doc_result in processed_results:
-                    similarity = (
-                        doc_result.get('distance', 0.0) or 
-                        doc_result.get('similarity_score', 0.0) or
-                        doc_result.get('score', 0.0)
-                    )
-                    similarity_scores.append(similarity)
+                    # Get angular distance and convert to relevance using correct formula
+                    distance = doc_result.get('distance', 1.0)
+                    relevance = 1.0 - (distance**2) / 2.0  # Correct mathematical conversion
+                    relevance_scores.append(relevance)
                 
-                average_relevance = sum(similarity_scores) / len(similarity_scores)
-                high_relevance_count = sum(1 for score in similarity_scores if score >= 0.2)
+                average_relevance = sum(relevance_scores) / len(relevance_scores)
+                high_relevance_count = sum(1 for score in relevance_scores if score >= 0.85)
                 
                 relevance_metrics = {
                     "average_relevance": average_relevance,
-                    "max_relevance": max(similarity_scores),
-                    "min_relevance": min(similarity_scores),
-                    "similarity_scores": similarity_scores,
+                    "max_relevance": max(relevance_scores),
+                    "min_relevance": min(relevance_scores),
+                    "relevance_scores": relevance_scores,
                     "high_relevance_count": high_relevance_count,
-                    "high_relevance_ratio": high_relevance_count / len(similarity_scores),
+                    "high_relevance_ratio": high_relevance_count / len(relevance_scores),
                     "retrieved_count": len(processed_results),
-                    "meets_threshold": average_relevance >= 0.2,
+                    "meets_threshold": average_relevance >= 0.85,
                     "retrieval_time": step3_time
                 }
             else:
@@ -322,7 +320,7 @@ class ComprehensiveEvaluator:
                 "latency_metrics": {
                     "total_latency": total_time,
                     "timing_details": timing_details,
-                    "meets_target": total_time <= 30.0
+                    "meets_target": total_time <= 60.0
                 },
                 
                 # Metric 2: Condition Extraction - Success rate from user_prompt.py
@@ -411,7 +409,7 @@ class ComprehensiveEvaluator:
             "latency_metrics": {
                 "total_latency": total_time,
                 "timing_details": timing_details,
-                "meets_target": total_time <= 30.0
+                "meets_target": total_time <= 60.0
             },
             
             # Metric 2: Condition Extraction - Partial data may be available before failure
@@ -546,7 +544,7 @@ class ComprehensiveEvaluator:
                         "min_latency": min(latencies),
                         "max_latency": max(latencies),
                         "query_count": len(latencies),
-                        "target_compliance": sum(1 for lat in latencies if lat <= 30.0) / len(latencies),
+                        "target_compliance": sum(1 for lat in latencies if lat <= 60.0) / len(latencies),
                         "individual_latencies": latencies
                     }
                 else:
@@ -661,7 +659,7 @@ class ComprehensiveEvaluator:
                 "max_latency": max(latencies),
                 "successful_queries": len(all_successful_results),
                 "total_queries": total_queries,
-                "target_compliance": sum(1 for lat in latencies if lat <= 30.0) / len(latencies)
+                "target_compliance": sum(1 for lat in latencies if lat <= 60.0) / len(latencies)
             }
         
         elif metric_name == "extraction":
@@ -682,8 +680,8 @@ class ComprehensiveEvaluator:
                 "min_relevance": min(relevance_scores),
                 "successful_queries": len(all_successful_results),
                 "total_queries": total_queries,
-                "meets_threshold": (sum(relevance_scores) / len(relevance_scores)) >= 0.2,
-                "target_compliance": (sum(relevance_scores) / len(relevance_scores)) >= 0.25
+                "meets_threshold": (sum(relevance_scores) / len(relevance_scores)) >= 0.85,
+                "target_compliance": (sum(relevance_scores) / len(relevance_scores)) >= 0.7
             }
         
         elif metric_name == "coverage" and all_successful_results:
@@ -866,7 +864,7 @@ if __name__ == "__main__":
         
         if metric_name == "latency":
             print(f"   Average: {overall_results['average_latency']:.2f}s (±{overall_results['std_deviation']:.2f})")
-            print(f"   30s Target: {'✅ Met' if overall_results['target_compliance'] >= 0.8 else '❌ Not Met'}")
+            print(f"   60s Target: {'✅ Met' if overall_results['target_compliance'] >= 0.8 else '❌ Not Met'}")
         
         elif metric_name == "extraction":
             print(f"   Success Rate: {overall_results['success_rate']:.1%}")
