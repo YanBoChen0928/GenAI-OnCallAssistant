@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # Fallback Generation Configuration (Simplified Architecture)
 FALLBACK_TIMEOUTS = {
-    "primary": 30.0,        # Primary Med42-70B with full RAG context
+    "primary": 60.0,        # Primary Med42-70B increased timeout for stable evaluation
     "fallback_1": 1.0,      # RAG template generation (renamed from fallback_2)
     "fallback_2": 0.1       # Minimal template generation (instant)
 }
@@ -279,7 +279,7 @@ class MedicalAdviceGenerator:
             
             # Format each chunk with metadata
             context_part = f"""
-            [Guideline {i}] (Source: {chunk_type.title()}, Relevance: {1-distance:.3f})
+            [Guideline {i}] (Source: {chunk_type.title()}, Angular Distance: {distance:.3f})
             {chunk_text}
             """.strip()
             

@@ -6,6 +6,12 @@ OnCall.ai System - Precision & MRR Analyzer (Metrics 7-8)
 Specialized analyzer for calculating Precision@K and Mean Reciprocal Rank (MRR)
 using data collected from latency_evaluator.py comprehensive evaluation.
 
+IMPORTANT CHANGES - Angular Distance & Relevance Calculation:
+- DISTANCE METRIC: Uses Angular Distance from Annoy index (range: 0.0-1.0, smaller = more relevant)
+- RELEVANCE CONVERSION: relevance = 1.0 - (angular_distance²) / 2.0 (mathematical correct formula)
+- THRESHOLD ALIGNMENT: Aligned with Metric 3 relevance calculation standards
+- DISPLAY UPDATE: Changed from "Relevance: X" to "Angular Distance: X" for clarity
+
 METRICS CALCULATED:
 7. Precision@K (檢索精確率) - Proportion of relevant results in top-K retrieval
 8. Mean Reciprocal Rank (平均倒數排名) - Average reciprocal rank of first relevant result
@@ -18,6 +24,7 @@ DESIGN PRINCIPLE:
 
 Author: YanBo Chen  
 Date: 2025-08-04
+Updated: 2025-08-04 (Angular Distance alignment)
 """
 
 import json
@@ -121,8 +128,8 @@ class PrecisionMRRAnalyzer:
         # Step 1: Determine query complexity
         is_complex = self._is_complex_query(query, processed_results)
         
-        # Step 2: Choose adaptive threshold
-        threshold = 0.15 if is_complex else 0.25
+        # Step 2: Choose adaptive threshold (aligned with Metric 3 relevance calculation)
+        threshold = 0.75 if is_complex else 0.8
         
         print(f"   🎯 Using relevance threshold: {threshold} ({'lenient' if is_complex else 'strict'})")
         
