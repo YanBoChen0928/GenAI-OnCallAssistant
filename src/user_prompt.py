@@ -255,13 +255,15 @@ Return ONLY the specified format."""
                 timeout=12.0     # Single call timeout
             )
             
+            # Get both raw response and extracted condition
+            raw_response = llama_response.get('raw_response', '').strip()
             response_text = llama_response.get('extracted_condition', '').strip()
             logger.info(f"🤖 Combined L2+4 result: {response_text}")
             
-            # Parse structured response
-            medical_status = self._extract_field(response_text, 'MEDICAL')
-            condition_name = self._extract_field(response_text, 'CONDITION')
-            confidence = self._extract_field(response_text, 'CONFIDENCE')
+            # Parse structured response from raw LLM output (not extracted condition)
+            medical_status = self._extract_field(raw_response, 'MEDICAL')
+            condition_name = self._extract_field(raw_response, 'CONDITION')
+            confidence = self._extract_field(raw_response, 'CONFIDENCE')
             
             # Non-medical query detection
             if medical_status == 'NO':
