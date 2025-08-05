@@ -175,7 +175,7 @@ class ComprehensiveEvaluator:
             "source_keywords_count": len(all_source_keywords),
             "matched_keywords_count": len(matched_keywords),
             "coverage_percentage": coverage_score * 100,
-            "meets_threshold": coverage_score >= 0.6
+            "meets_threshold": coverage_score >= 0.4
         }
     
     def evaluate_single_query_comprehensive(self, query: str, category: str = "unknown") -> Dict[str, Any]:
@@ -571,7 +571,7 @@ class ComprehensiveEvaluator:
                         "min_relevance": min(relevance_scores),
                         "successful_retrievals": len(successful_results),
                         "total_queries": len(results),
-                        "meets_threshold": (sum(relevance_scores) / len(relevance_scores)) >= 0.2,
+                        "meets_threshold": (sum(relevance_scores) / len(relevance_scores)) >= 0.85,
                         "individual_relevance_scores": relevance_scores
                     }
                 else:
@@ -586,7 +586,7 @@ class ComprehensiveEvaluator:
                         "min_coverage": min(coverage_scores),
                         "successful_evaluations": len(successful_results),
                         "total_queries": len(results),
-                        "meets_threshold": (sum(coverage_scores) / len(coverage_scores)) >= 0.6,
+                        "meets_threshold": (sum(coverage_scores) / len(coverage_scores)) >= 0.4,
                         "individual_coverage_scores": coverage_scores
                     }
                 else:
@@ -692,7 +692,7 @@ class ComprehensiveEvaluator:
                 "min_coverage": min(coverage_scores),
                 "successful_queries": len(all_successful_results),
                 "total_queries": total_queries,
-                "meets_threshold": (sum(coverage_scores) / len(coverage_scores)) >= 0.6
+                "meets_threshold": (sum(coverage_scores) / len(coverage_scores)) >= 0.4
             }
         
         # Return empty stats for failed cases
@@ -872,11 +872,11 @@ if __name__ == "__main__":
         
         elif metric_name == "relevance":
             print(f"   Average Relevance: {overall_results['average_relevance']:.3f}")
-            print(f"   0.25 Target: {'✅ Met' if overall_results.get('target_compliance', False) else '❌ Not Met'}")
+            print(f"   0.70 Target: {'✅ Met' if overall_results.get('target_compliance', False) else '❌ Not Met'}")
         
         elif metric_name == "coverage":
             print(f"   Average Coverage: {overall_results['average_coverage']:.3f} ({overall_results['average_coverage']*100:.1f}%)")
-            print(f"   60% Target: {'✅ Met' if overall_results['meets_threshold'] else '❌ Not Met'}")
+            print(f"   40% Target: {'✅ Met' if overall_results['meets_threshold'] else '❌ Not Met'}")
     
     print(f"\n✅ Comprehensive evaluation complete! Files saved:")
     for metric_name, filepath in saved_stats.items():

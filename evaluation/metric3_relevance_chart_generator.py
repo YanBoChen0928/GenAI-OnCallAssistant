@@ -84,7 +84,7 @@ class RelevanceChartGenerator:
             
             # Add threshold lines
             ax1.axhline(y=0.2, color='orange', linestyle='--', alpha=0.7, label='0.2 Threshold')
-            ax1.axhline(y=0.25, color='red', linestyle='--', alpha=0.7, label='0.25 Target')
+            ax1.axhline(y=0.70, color='red', linestyle='--', alpha=0.7, label='0.70 Target')
             ax1.legend()
             
             # Add value labels
@@ -109,7 +109,7 @@ class RelevanceChartGenerator:
                 # Create histogram
                 ax2.hist(all_scores, bins=20, alpha=0.7, color='skyblue', edgecolor='black')
                 ax2.axvline(x=0.2, color='orange', linestyle='--', alpha=0.7, label='0.2 Threshold')
-                ax2.axvline(x=0.25, color='red', linestyle='--', alpha=0.7, label='0.25 Target')
+                ax2.axvline(x=0.70, color='red', linestyle='--', alpha=0.7, label='0.70 Target')
                 ax2.axvline(x=np.mean(all_scores), color='green', linestyle='-', alpha=0.8, label=f'Mean: {np.mean(all_scores):.3f}')
                 
                 ax2.set_title('Relevance Score Distribution', fontweight='bold')
@@ -180,7 +180,7 @@ class RelevanceChartGenerator:
                     patch.set_alpha(0.7)
                 
                 ax4.axhline(y=0.2, color='orange', linestyle='--', alpha=0.7, label='0.2 Threshold')
-                ax4.axhline(y=0.25, color='red', linestyle='--', alpha=0.7, label='0.25 Target')
+                ax4.axhline(y=0.70, color='red', linestyle='--', alpha=0.7, label='0.70 Target')
                 ax4.set_title('Relevance Distribution by Category', fontweight='bold')
                 ax4.set_ylabel('Relevance Score')
                 ax4.legend()

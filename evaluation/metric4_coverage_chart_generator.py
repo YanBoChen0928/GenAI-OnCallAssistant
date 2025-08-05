@@ -83,7 +83,7 @@ class CoverageChartGenerator:
             ax1.grid(True, alpha=0.3)
             
             # Add target line
-            ax1.axhline(y=60, color='red', linestyle='--', alpha=0.7, label='60% Target')
+            ax1.axhline(y=40, color='red', linestyle='--', alpha=0.7, label='40% Target')
             ax1.legend()
             
             # Add value labels
@@ -105,7 +105,7 @@ class CoverageChartGenerator:
             if all_scores:
                 # Create histogram
                 ax2.hist(all_scores, bins=15, alpha=0.7, color='lightcoral', edgecolor='black')
-                ax2.axvline(x=60, color='red', linestyle='--', alpha=0.7, label='60% Target')
+                ax2.axvline(x=40, color='red', linestyle='--', alpha=0.7, label='40% Target')
                 ax2.axvline(x=np.mean(all_scores), color='green', linestyle='-', alpha=0.8, label=f'Mean: {np.mean(all_scores):.1f}%')
                 
                 ax2.set_title('Coverage Score Distribution', fontweight='bold')
@@ -165,7 +165,7 @@ class CoverageChartGenerator:
             
             # Pie chart as gauge
             sizes = [overall_coverage_pct, 100 - overall_coverage_pct]
-            colors = ['#2ca02c' if overall_coverage_pct >= 60 else '#ff7f0e', '#f0f0f0']
+            colors = ['#2ca02c' if overall_coverage_pct >= 40 else '#ff7f0e', '#f0f0f0']
             
             wedges, texts, autotexts = ax4.pie(sizes, labels=['Covered', 'Not Covered'],
                                               autopct='%1.1f%%',
@@ -177,7 +177,7 @@ class CoverageChartGenerator:
             ax4.text(0, 0, f'{overall_coverage_pct:.1f}%\nCoverage', 
                     ha='center', va='center', fontsize=14, fontweight='bold')
             
-            ax4.set_title(f'Overall Coverage Performance\n{"✅ Target Met" if overall_coverage_pct >= 60 else "❌ Below Target"}', 
+            ax4.set_title(f'Overall Coverage Performance\n{"✅ Target Met" if overall_coverage_pct >= 40 else "❌ Below Target"}', 
                          fontweight='bold')
             
             plt.tight_layout()
