@@ -1,21 +1,48 @@
 #!/usr/bin/env python3
 """
-OnCall.ai System - Comprehensive Evaluator (Metrics 1-6)
+OnCall.ai System - Comprehensive Evaluator (Metrics 1-8)
 ========================================================
 
-Single execution to collect all metrics 1-6 data from app.py pipeline:
+Single execution to collect all metrics 1-4 data from app.py pipeline.
+Generates foundation data for metrics 5-8 evaluation in downstream processors.
 
-RETRIEVAL METRICS (Only available for RAG systems):
-1. Total Latency (總處理時長) - Complete pipeline timing
-2. Condition Extraction Success Rate (條件抽取成功率) - user_prompt.py success  
-3. Retrieval Relevance (檢索相關性) - cosine similarity from retrieval.py
-4. Retrieval Coverage (檢索覆蓋率) - advice utilization of retrieved content
+COMPLETE METRICS OVERVIEW:
 
-LLM EVALUATION METRICS (Available for all systems):
-5. Clinical Actionability (臨床可操作性) - Third-party LLM evaluation  
-6. Clinical Evidence Quality (臨床證據品質) - Third-party LLM evaluation
+PIPELINE PERFORMANCE METRICS (Collected by this evaluator):
+1. Total Latency (總處理時長) - Complete pipeline processing time from query to response
+2. Condition Extraction Success Rate (條件抽取成功率) - Success rate of user_prompt.py condition extraction
+3. Retrieval Relevance (檢索相關性) - Average cosine similarity scores from retrieval.py results
+4. Retrieval Coverage (檢索覆蓋率) - Medical keyword utilization rate between retrieved content and generated advice
 
-Note: This evaluator focuses on metrics 1-4. Metrics 5-6 require separate LLM evaluation.
+LLM JUDGE METRICS (Processed by metric5_6_llm_judge_evaluator.py):
+5. Clinical Actionability (臨床可操作性) - Third-party LLM evaluation of medical advice actionability (1-10 scale)
+   * Uses batch evaluation strategy with Llama3-70B as judge
+   * Measures: Can healthcare providers immediately act on this advice?
+   * Target threshold: ≥7.0/10 for acceptable actionability
+   
+6. Clinical Evidence Quality (臨床證據品質) - Third-party LLM evaluation of evidence-based quality (1-10 scale)
+   * Uses same batch evaluation call as metric 5 for efficiency
+   * Measures: Is the advice evidence-based and follows medical standards?
+   * Target threshold: ≥7.5/10 for acceptable evidence quality
+
+RETRIEVAL PRECISION METRICS (Processed by metric7_8_precision_MRR.py):
+7. Precision@K (檢索精確率) - Proportion of relevant results in top-K retrieval results
+   * Uses adaptive threshold based on query complexity (0.15 for complex, 0.25 for simple queries)
+   * Query complexity determined by unique emergency keywords count (≥4 = complex)
+   * Measures: relevant_results / total_retrieved_results
+   
+8. Mean Reciprocal Rank (平均倒數排名) - Average reciprocal rank of first relevant result
+   * Uses same adaptive threshold as Precision@K
+   * Measures: 1 / rank_of_first_relevant_result (0 if no relevant results)
+   * Higher MRR indicates relevant results appear earlier in ranking
+
+DATA FLOW ARCHITECTURE:
+1. latency_evaluator.py → comprehensive_details_*.json (metrics 1-4 + pipeline data)
+2. latency_evaluator.py → medical_outputs_*.json (medical advice for judge evaluation)
+3. metric5_6_llm_judge_evaluator.py → judge_evaluation_*.json (metrics 5-6)
+4. metric7_8_precision_MRR.py → precision_mrr_analysis_*.json (metrics 7-8)
+
+Note: This evaluator focuses on metrics 1-4 collection. Metrics 5-8 require separate downstream evaluation.
 
 Author: YanBo Chen  
 Date: 2025-08-04
@@ -320,6 +347,31 @@ class ComprehensiveEvaluator:
                 "timestamp": datetime.now().isoformat()
             }
             
+            # Validate data completeness for metrics 7-8 analysis
+            ready = True
+            data = comprehensive_result.get('pipeline_data', {})
+            
+            # 1. Check retrieval results completeness for precision/MRR calculation
+            retr = data.get('retrieval_results', {}).get('processed_results', [])
+            if not retr or 'distance' not in retr[0]:
+                ready = False
+            
+            # 2. Check condition extraction completeness for complexity analysis
+            cond = data.get('condition_result', {}).get('condition')
+            if not cond:
+                ready = False
+            
+            # 3. Check overall execution status
+            if not comprehensive_result.get('overall_success', False):
+                ready = False
+            
+            # 4. Check retrieval timing data completeness
+            if 'retrieval_time' not in comprehensive_result.get('relevance_metrics', {}):
+                ready = False
+            
+            # Set metrics 7-8 readiness flag for downstream precision/MRR analysis
+            comprehensive_result['precision_mrr_ready'] = ready
+            
             # Store result
             self.comprehensive_results.append(comprehensive_result)
             
@@ -386,14 +438,18 @@ class ComprehensiveEvaluator:
             },
             
             # Note: Metrics 5-6 (Clinical Actionability & Evidence Quality) 
-            # are not collected here - they require separate LLM evaluation
-            # using the medical_outputs saved by this evaluator
+            # are collected by metric5_6_llm_judge_evaluator.py using medical_outputs
+            # Metrics 7-8 (Precision@K & MRR) are collected by metric7_8_precision_MRR.py 
+            # using comprehensive_details pipeline data
             
             "overall_success": False,
             "status": status,
             "error": error,
             "timestamp": datetime.now().isoformat()
         }
+        
+        # For failed results, precision/MRR analysis data is not ready
+        failed_result['precision_mrr_ready'] = False
         
         self.comprehensive_results.append(failed_result)
         return failed_result
@@ -741,8 +797,8 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         query_file = sys.argv[1]
     else:
-        # Default to evaluation/pre_user_query_evaluate.txt
-        query_file = Path(__file__).parent / "pre_user_query_evaluate.txt"
+        # Default to evaluation/single_test_query.txt for initial testing
+        query_file = Path(__file__).parent / "single_test_query.txt"
     
     if not os.path.exists(query_file):
         print(f"❌ Query file not found: {query_file}")
@@ -829,7 +885,9 @@ if __name__ == "__main__":
         print(f"   📊 {metric_name.capitalize()}: {filepath}")
     print(f"   📝 Medical Outputs: {outputs_path}")
     print(f"   📋 Comprehensive Details: {details_path}")
-    print(f"\n💡 Next step: Run chart generators for individual metrics")
+    print(f"\n💡 Next step: Run downstream evaluators for metrics 5-8")
+    print(f"   python metric5_6_llm_judge_evaluator.py rag")
+    print(f"   python metric7_8_precision_MRR.py {details_path}")
     print(f"   python latency_chart_generator.py")
     print(f"   python extraction_chart_generator.py  # (create separately)")
     print(f"   python relevance_chart_generator.py   # (create separately)")
