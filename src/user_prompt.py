@@ -249,10 +249,10 @@ Return ONLY the specified format."""
 
             logger.info("🤖 COMBINED L2+4: Single LLM call for extraction + validation")
             
-            llama_response = self.llm_client.analyze_medical_query(
-                query=combined_prompt,
-                max_tokens=100,  # Keep concise for condition name
-                timeout=12.0     # Single call timeout
+            llama_response = self.llm_client.analyze_medical_query_dual_task(
+                user_query=user_query,  # Direct original query, not wrapped prompt
+                max_tokens=100,
+                timeout=12.0
             )
             
             # Get both raw response and extracted condition
