@@ -368,11 +368,29 @@ class QueryExecutor:
             
             # Check for hospital guidelines in customization results
             if "Hospital Guidelines Found:" in guidelines_display:
-                hospital_count = guidelines_display.split("Hospital Guidelines Found:")[1].strip().split()[0]
+                # First extract the count (backward compatibility)
+                hospital_count_line = guidelines_display.split("Hospital Guidelines Found:")[1].strip().split('\n')[0]
+                hospital_count = hospital_count_line.split()[0] if hospital_count_line else "0"
                 try:
                     retrieval_info["hospital_guidelines"] = int(hospital_count)
                 except:
                     pass
+                
+                # Now try to extract similarity scores from embedded JSON
+                if "<!--EVAL_DATA:" in guidelines_display:
+                    try:
+                        import json
+                        eval_data_start = guidelines_display.index("<!--EVAL_DATA:") + len("<!--EVAL_DATA:")
+                        eval_data_end = guidelines_display.index("-->", eval_data_start)
+                        eval_data_json = guidelines_display[eval_data_start:eval_data_end]
+                        eval_data = json.loads(eval_data_json)
+                        
+                        # Extract similarity scores
+                        if "similarity_scores" in eval_data:
+                            retrieval_info["confidence_scores"] = eval_data["similarity_scores"]
+                            print(f"   📊 Extracted {len(eval_data['similarity_scores'])} similarity scores")
+                    except Exception as e:
+                        print(f"   ⚠️ Could not parse similarity scores: {e}")
             
         except Exception as e:
             print(f"⚠️ Warning: Could not fully parse retrieval info: {e}")

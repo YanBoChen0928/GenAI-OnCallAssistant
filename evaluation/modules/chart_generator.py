@@ -47,19 +47,20 @@ class HospitalCustomizationChartGenerator:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Set up consistent styling
+        # Set up consistent styling (aligned with general evaluation charts)
         self.colors = {
-            "primary": "#2E86AB",
-            "secondary": "#A23B72", 
-            "accent": "#F18F01",
-            "success": "#C73E1D",
-            "info": "#592E83",
-            "light": "#F5F5F5",
-            "dark": "#2C3E50"
+            "primary": "#1f77b4",    # Blue (same as general)
+            "secondary": "#ff7f0e",  # Orange (same as general)
+            "accent": "#d62728",     # Red (same as general)
+            "success": "#2ca02c",    # Green (same as general)
+            "info": "#9467bd",       # Purple
+            "light": "#F5F5F5",      # Light gray
+            "dark": "#2C3E50"        # Dark gray
         }
         
-        self.figure_size = (12, 8)
-        self.dpi = 300
+        # Match general evaluation figure size for consistency
+        self.figure_size = (16, 12)
+        self.dpi = 100  # Standard matplotlib DPI for consistency
         
     def generate_latency_charts(self, metrics: Dict[str, Any], timestamp: str = None) -> List[str]:
         """
@@ -206,9 +207,9 @@ class HospitalCustomizationChartGenerator:
         if timestamp is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        # Create a large figure with subplots
-        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
-        fig.suptitle("Hospital Customization Evaluation Dashboard", fontsize=20, fontweight='bold')
+        # Create 2x2 figure layout (matching friend's standard)
+        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+        fig.suptitle("Hospital Customization Evaluation Dashboard", fontsize=16, fontweight='bold')
         
         # Extract metric data
         latency_data = metrics.get("metric_1_latency", {})
@@ -218,20 +219,14 @@ class HospitalCustomizationChartGenerator:
         # 1. Latency by query type (top-left)
         self._add_latency_subplot(axes[0, 0], latency_data)
         
-        # 2. Relevance scores (top-center)
-        self._add_relevance_subplot(axes[0, 1], relevance_data)
+        # 2. Relevance scores by query type (top-right)
+        self._add_relevance_by_query_type_subplot(axes[0, 1], relevance_data)
         
-        # 3. Coverage percentage (top-right)
-        self._add_coverage_subplot(axes[0, 2], coverage_data)
+        # 3. Coverage percentage (bottom-left)
+        self._add_coverage_subplot(axes[1, 0], coverage_data)
         
-        # 4. Performance summary (bottom-left)
-        self._add_summary_subplot(axes[1, 0], metrics.get("summary", {}))
-        
-        # 5. Trend analysis (bottom-center)
+        # 4. Performance trends (bottom-right)
         self._add_trend_subplot(axes[1, 1], latency_data, relevance_data, coverage_data)
-        
-        # 6. Key insights (bottom-right)
-        self._add_insights_subplot(axes[1, 2], metrics)
         
         plt.tight_layout()
         
@@ -257,19 +252,25 @@ class HospitalCustomizationChartGenerator:
         # Create chart
         fig, ax = plt.subplots(figsize=self.figure_size)
         
+        # Use consistent colors with general evaluation
+        bar_colors = [self.colors["primary"], self.colors["secondary"], self.colors["accent"]]
         bars = ax.bar(query_types, mean_times, yerr=std_devs, 
-                     capsize=5, color=[self.colors["primary"], self.colors["secondary"], self.colors["accent"]])
+                     capsize=5, alpha=0.8, color=bar_colors)
         
         ax.set_title("Latency Analysis by Query Type", fontsize=16, fontweight='bold')
         ax.set_xlabel("Query Specificity", fontsize=12)
         ax.set_ylabel("Execution Time (seconds)", fontsize=12)
         ax.grid(True, alpha=0.3)
         
-        # Add value labels on bars
-        for bar, mean_time in zip(bars, mean_times):
+        # Add value labels on bars (matching general style)
+        for bar, mean_time, std in zip(bars, mean_times, std_devs):
             height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height + max(std_devs) * 0.1,
-                   f'{mean_time:.2f}s', ha='center', va='bottom', fontweight='bold')
+            ax.text(bar.get_x() + bar.get_width()/2., height + std * 0.1,
+                   f'{mean_time:.1f}s', ha='center', va='bottom', fontweight='bold')
+        
+        # Add target line (matching general evaluation)
+        ax.axhline(y=30.0, color='red', linestyle='--', alpha=0.7, label='30s Target')
+        ax.legend()
         
         plt.tight_layout()
         
@@ -379,7 +380,8 @@ class HospitalCustomizationChartGenerator:
         # Create scatter plot
         fig, ax = plt.subplots(figsize=self.figure_size)
         
-        scatter = ax.scatter(x_values, y_values, c=y_values, cmap='viridis', 
+        # Use consistent color mapping with general evaluation
+        scatter = ax.scatter(x_values, y_values, c=y_values, cmap='coolwarm', 
                            s=100, alpha=0.7, edgecolors='black')
         
         # Add trend line
@@ -527,7 +529,8 @@ class HospitalCustomizationChartGenerator:
         # Create chart
         fig, ax = plt.subplots(figsize=self.figure_size)
         
-        bars = ax.bar(categories, percentages, 
+        # Use consistent alpha and colors with general evaluation
+        bars = ax.bar(categories, percentages, alpha=0.8,
                      color=[self.colors["primary"], self.colors["secondary"], self.colors["accent"]])
         
         # Add value labels
@@ -664,7 +667,7 @@ class HospitalCustomizationChartGenerator:
         query_types = list(by_query_type.keys())
         mean_times = [data.get("mean", 0) for data in by_query_type.values()]
         
-        bars = ax.bar(query_types, mean_times, color=self.colors["primary"])
+        bars = ax.bar(query_types, mean_times, color=self.colors["primary"], alpha=0.8)
         ax.set_title("Latency by Query Type", fontweight='bold')
         ax.set_ylabel("Seconds")
         
@@ -673,6 +676,36 @@ class HospitalCustomizationChartGenerator:
             height = bar.get_height()
             ax.text(bar.get_x() + bar.get_width()/2., height + max(mean_times) * 0.05,
                    f'{mean_time:.1f}s', ha='center', va='bottom', fontsize=8)
+    
+    def _add_relevance_by_query_type_subplot(self, ax, relevance_data: Dict):
+        """Add relevance subplot showing scores by query type to dashboard."""
+        by_query_type = relevance_data.get("by_query_type", {})
+        if not by_query_type:
+            ax.text(0.5, 0.5, "No relevance data", ha='center', va='center', transform=ax.transAxes)
+            ax.set_title("Relevance by Query Type")
+            return
+        
+        query_types = list(by_query_type.keys())
+        mean_scores = [data.get("mean", 0) for data in by_query_type.values()]
+        
+        # Use consistent colors matching friend's standard
+        colors = ['#1f77b4', '#ff7f0e', '#d62728'][:len(query_types)]
+        bars = ax.bar(query_types, mean_scores, color=colors, alpha=0.8)
+        
+        ax.set_title("Average Relevance by Query Type", fontweight='bold')
+        ax.set_ylabel("Relevance Score")
+        ax.set_ylim(0, 1)
+        ax.grid(True, alpha=0.3)
+        
+        # Add value labels on bars
+        for bar, score in zip(bars, mean_scores):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height + 0.01,
+                   f'{score:.3f}', ha='center', va='bottom', fontweight='bold')
+        
+        # Add target line
+        ax.axhline(y=0.7, color='red', linestyle='--', alpha=0.7, label='0.70 Target')
+        ax.legend()
     
     def _add_relevance_subplot(self, ax, relevance_data: Dict):
         """Add relevance subplot to dashboard."""
@@ -684,8 +717,8 @@ class HospitalCustomizationChartGenerator:
         
         mean_score = hospital_content.get("mean", 0)
         
-        # Create a simple bar showing relevance
-        ax.bar(['Hospital Content'], [mean_score], color=self.colors["secondary"])
+        # Create a simple bar showing relevance (with consistent alpha)
+        ax.bar(['Hospital Content'], [mean_score], color=self.colors["secondary"], alpha=0.8)
         ax.set_title("Average Relevance Score", fontweight='bold')
         ax.set_ylabel("Score")
         ax.set_ylim(0, 1)

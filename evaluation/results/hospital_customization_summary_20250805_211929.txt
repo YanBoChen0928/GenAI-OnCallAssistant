@@ -1,0 +1,26 @@
+Hospital Customization Evaluation Summary Report
+==================================================
+
+Evaluation Date: 2025-08-05T21:24:41.917031
+Evaluation Type: hospital_customization
+Retrieval Mode: Hospital Only
+Total Queries: 6
+Successful Queries: 6
+
+Performance Summary:
+--------------------
+Latency Performance: Good
+Relevance Quality: High
+Coverage Effectiveness: Comprehensive
+Overall Assessment: Strong Performance
+
+Key Insights:
+------------
+• Low relevance scores suggest need for hospital content optimization
+• Limited keyword coverage indicates need for content enrichment
+• Perfect execution success rate achieved
+
+Recommendations:
+---------------
+• Continue monitoring performance metrics over time
+• Consider A/B testing different retrieval strategies
