@@ -1,1 +1,1 @@
-1.diagnosis: 60-year-old patient with hypertension history, sudden chest pain. What are possible causes and how to assess?
+1.mixed/complicated: 20 year-old female , porphyria, sudden seizure. What are possible causes and complete management workflow?

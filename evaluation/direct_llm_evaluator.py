@@ -20,6 +20,7 @@ from typing import Dict, List, Any
 from datetime import datetime
 from pathlib import Path
 import re
+from huggingface_hub import InferenceClient
 
 # Add project path
 current_dir = Path(__file__).parent
@@ -54,7 +55,7 @@ class DirectLLMEvaluator:
     
     def evaluate_direct_llm_query(self, query: str, category: str = "unknown") -> Dict[str, Any]:
         """
-        Direct LLM evaluation for single query
+        Direct LLM evaluation for single query with retry mechanism for 504 timeouts
         
         Only tests direct LLM response without RAG pipeline
         Applicable metrics: 1 (Latency), 5-6 (via medical output)
@@ -68,123 +69,223 @@ class DirectLLMEvaluator:
         
         overall_start = time.time()
         
-        try:
-            # Direct LLM call without any RAG processing
-            llm_start = time.time()
-            
-            # Create direct medical consultation prompt
-            direct_prompt = f"""
-You are a medical expert providing clinical guidance.
+        # Retry configuration
+        max_retries = 3
+        retry_delay = 30  # seconds
+        base_timeout = 120.0  # Increased base timeout for complex medical advice generation
+        
+        for attempt in range(max_retries):
+            try:
+                print(f"   🔄 Attempt {attempt + 1}/{max_retries}")
+                
+                # Direct LLM call without any RAG processing
+                llm_start = time.time()
+                
+                # Create direct medical consultation prompt (matching generation.py format)
+                direct_prompt = f"""You are an experienced attending physician providing guidance to a junior clinician in an emergency setting. A colleague is asking for your expert medical opinion.
 
-Patient Query: {query}
+Clinical Question:
+{query}
 
-Please provide comprehensive medical advice including:
-1. Differential diagnosis (if applicable)
-2. Immediate assessment steps
-3. Treatment recommendations
-4. Clinical considerations
+Instructions:
+Provide comprehensive medical guidance covering both diagnostic and treatment aspects as appropriate.
 
-Provide evidence-based, actionable medical guidance.
-"""
-            
-            # Direct LLM generation (same parameters as RAG system for fair comparison)
-            response = self.llm_client.analyze_medical_query(
-                query=direct_prompt,
-                max_tokens=1600,  # Same as RAG system primary setting  
-                timeout=60.0      # Increased timeout for stable evaluation
-            )
-            # Extract medical advice from response (Med42 client returns dict with 'raw_response')
-            if isinstance(response, dict):
-                medical_advice = response.get('raw_response', '') or response.get('content', '')
-            else:
-                medical_advice = str(response)
-            
-            llm_time = time.time() - llm_start
-            total_time = time.time() - overall_start
-            
-            # Check if response is valid (not empty) - focus on content, not timeout
-            if not medical_advice or len(medical_advice.strip()) == 0:
-                print(f"❌ Direct LLM returned empty response after {total_time:.2f}s")
-                raise ValueError("Empty response from LLM - no content generated")
-            
-            # Create result
-            result = {
-                "query": query,
-                "category": category,
+Provide guidance with:
+• Prioritize your medical knowledge and clinical experience
+• Use numbered points (1. 2. 3.) for key steps
+• Line breaks between major sections
+• Highlight medications with dosages and routes
+• Emphasize clinical judgment for individual patient factors
+
+IMPORTANT: Keep response under 1000 words. Use concise numbered points. For complex cases with multiple conditions, address the most urgent condition first, then relevant comorbidities. Prioritize actionable clinical steps over theoretical explanations.
+
+Your response should provide practical clinical guidance suitable for immediate bedside application with appropriate medical caution."""
                 
-                # Metric 1: Total Latency (direct LLM call time)
-                "latency_metrics": {
-                    "total_latency": total_time,
-                    "llm_generation_time": llm_time,
-                    "meets_target": total_time <= 60.0
-                },
+                # Direct LLM generation with extended timeout - bypass analyze_medical_query to avoid system prompt conflict
+                current_timeout = 120.0 + (attempt * 60)  # 120s, 180s, 240s
+                print(f"   ⏱️ Using read timeout = {current_timeout}s")
                 
-                # Metrics 2-4: Not applicable for direct LLM
-                "extraction_metrics": {
-                    "not_applicable": True,
-                    "reason": "No extraction pipeline in direct LLM"
-                },
-                "relevance_metrics": {
-                    "not_applicable": True,
-                    "reason": "No retrieval pipeline in direct LLM"
-                },
-                "coverage_metrics": {
-                    "not_applicable": True,
-                    "reason": "No retrieval content to cover"
-                },
+                # Create a new client with appropriate timeout for this attempt
+                hf_token = os.getenv('HF_TOKEN')
+                if not hf_token:
+                    raise ValueError("HF_TOKEN not found in environment variables")
                 
-                # Medical advice for metrics 5-6 evaluation
-                "medical_advice": medical_advice,
-                "advice_length": len(medical_advice),
+                timeout_client = InferenceClient(
+                    provider="featherless-ai",
+                    api_key=hf_token,
+                    timeout=current_timeout
+                )
                 
-                "overall_success": True,
-                "model_type": "Med42-70B_direct",
-                "timestamp": datetime.now().isoformat()
-            }
-            
-            # Store result
-            self.direct_results.append(result)
-            
-            # Store medical output for LLM judge evaluation
-            medical_output = {
-                "query": query,
-                "category": category,
-                "medical_advice": medical_advice,
-                "query_id": f"{category}_query_direct",
-                "model_type": "Med42-70B_direct",
-                "processing_time": total_time,
-                "timestamp": datetime.now().isoformat()
-            }
-            self.medical_outputs.append(medical_output)
-            
-            print(f"✅ Direct LLM completed in {total_time:.2f}s")
-            print(f"📝 Generated advice: {len(medical_advice)} characters")
-            
-            return result
-            
-        except Exception as e:
-            total_time = time.time() - overall_start
-            print(f"❌ Direct LLM evaluation failed after {total_time:.2f}s: {e}")
-            
-            error_result = {
-                "query": query,
-                "category": category,
-                "latency_metrics": {
-                    "total_latency": total_time,
-                    "meets_target": False
-                },
-                "overall_success": False,
-                "error": str(e),
-                "model_type": "Med42-70B_direct",
-                "timestamp": datetime.now().isoformat()
-            }
-            
-            self.direct_results.append(error_result)
-            
-            # Do NOT add failed queries to medical_outputs for judge evaluation
-            # Only successful queries with valid medical advice should be evaluated
-            
-            return error_result
+                # Call LLM directly to avoid system prompt conflicts
+                response = timeout_client.chat.completions.create(
+                    model="m42-health/Llama3-Med42-70B",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": direct_prompt  # Our complete prompt as user message
+                        }
+                    ],
+                    max_tokens=1600,
+                    temperature=0.1  # Low temperature for consistent medical advice
+                )
+                # Extract medical advice from direct API response (not Med42 client wrapper)
+                medical_advice = response.choices[0].message.content or ""
+                
+                llm_time = time.time() - llm_start
+                total_time = time.time() - overall_start
+                
+                # Check if response is valid (not empty)
+                if not medical_advice or len(medical_advice.strip()) == 0:
+                    raise ValueError("Empty response from LLM - no content generated")
+                
+                # Success - create result and return
+                if attempt > 0:
+                    print(f"   ✅ Succeeded on attempt {attempt + 1}")
+                
+                result = {
+                    "query": query,
+                    "category": category,
+                    
+                    # Metric 1: Total Latency (direct LLM call time)
+                    "latency_metrics": {
+                        "total_latency": total_time,
+                        "llm_generation_time": llm_time,
+                        "meets_target": total_time <= 60.0,
+                        "attempts_needed": attempt + 1
+                    },
+                    
+                    # Metrics 2-4: Not applicable for direct LLM
+                    "extraction_metrics": {
+                        "not_applicable": True,
+                        "reason": "No extraction pipeline in direct LLM"
+                    },
+                    "relevance_metrics": {
+                        "not_applicable": True,
+                        "reason": "No retrieval pipeline in direct LLM"
+                    },
+                    "coverage_metrics": {
+                        "not_applicable": True,
+                        "reason": "No retrieval content to cover"
+                    },
+                    
+                    # Medical advice for metrics 5-6 evaluation
+                    "medical_advice": medical_advice,
+                    "advice_length": len(medical_advice),
+                    
+                    "overall_success": True,
+                    "model_type": "Med42-70B_direct",
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                # Store result
+                self.direct_results.append(result)
+                
+                # Store medical output for LLM judge evaluation
+                medical_output = {
+                    "query": query,
+                    "category": category,
+                    "medical_advice": medical_advice,
+                    "query_id": f"{category}_query_direct",
+                    "model_type": "Med42-70B_direct",
+                    "processing_time": total_time,
+                    "timestamp": datetime.now().isoformat()
+                }
+                self.medical_outputs.append(medical_output)
+                
+                print(f"✅ Direct LLM completed in {total_time:.2f}s")
+                print(f"📝 Generated advice: {len(medical_advice)} characters")
+                
+                return result
+                
+            except Exception as e:
+                error_str = str(e)
+                
+                # CRITICAL: Check for timeout/connectivity errors FIRST (before any response processing)
+                if any(keyword in error_str.lower() for keyword in ['504', 'timeout', 'gateway', 'connection', 'time-out', 'empty response']):
+                    if attempt < max_retries - 1:
+                        print(f"   ⏳ Timeout/connectivity/empty response error detected, retrying in {retry_delay}s...")
+                        print(f"      Error: {error_str}")
+                        time.sleep(retry_delay)
+                        continue  # Continue to next retry attempt
+                    else:
+                        print(f"   ❌ All {max_retries} attempts failed with timeouts/empty responses")
+                        total_time = time.time() - overall_start
+                        return self._create_timeout_failure_result(query, category, error_str, total_time)
+                else:
+                    # Non-timeout error (e.g., ValueError for empty response), don't retry
+                    print(f"   ❌ Non-retry error: {error_str}")
+                    total_time = time.time() - overall_start
+                    return self._create_general_failure_result(query, category, error_str, total_time)
+        
+        # Should not reach here
+        total_time = time.time() - overall_start
+        return self._create_timeout_failure_result(query, category, "Max retries exceeded", total_time)
+    
+    def _create_timeout_failure_result(self, query: str, category: str, error: str, total_time: float) -> Dict[str, Any]:
+        """Create standardized result for timeout failures after all retries"""
+        error_result = {
+            "query": query,
+            "category": category,
+            "latency_metrics": {
+                "total_latency": total_time,
+                "llm_generation_time": 0.0,
+                "meets_target": False,
+                "failure_type": "timeout_after_retries"
+            },
+            "extraction_metrics": {
+                "not_applicable": True,
+                "reason": "No extraction pipeline in direct LLM"
+            },
+            "relevance_metrics": {
+                "not_applicable": True,
+                "reason": "No retrieval pipeline in direct LLM"
+            },
+            "coverage_metrics": {
+                "not_applicable": True,
+                "reason": "No retrieval content to cover"
+            },
+            "overall_success": False,
+            "error": f"API timeout after retries: {error}",
+            "model_type": "Med42-70B_direct",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        self.direct_results.append(error_result)
+        print(f"❌ Direct LLM failed after {total_time:.2f}s with retries: {error}")
+        return error_result
+    
+    def _create_general_failure_result(self, query: str, category: str, error: str, total_time: float) -> Dict[str, Any]:
+        """Create standardized result for general failures (non-timeout)"""
+        error_result = {
+            "query": query,
+            "category": category,
+            "latency_metrics": {
+                "total_latency": total_time,
+                "llm_generation_time": 0.0,
+                "meets_target": False,
+                "failure_type": "general_error"
+            },
+            "extraction_metrics": {
+                "not_applicable": True,
+                "reason": "No extraction pipeline in direct LLM"
+            },
+            "relevance_metrics": {
+                "not_applicable": True,
+                "reason": "No retrieval pipeline in direct LLM"
+            },
+            "coverage_metrics": {
+                "not_applicable": True,
+                "reason": "No retrieval content to cover"
+            },
+            "overall_success": False,
+            "error": str(error),
+            "model_type": "Med42-70B_direct",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        self.direct_results.append(error_result)
+        print(f"❌ Direct LLM failed after {total_time:.2f}s: {error}")
+        return error_result
     
     def parse_queries_from_file(self, filepath: str) -> Dict[str, List[Dict]]:
         """Parse queries from file with category labels"""
@@ -347,7 +448,8 @@ if __name__ == "__main__":
         query_file = sys.argv[1]
     else:
         # Default to evaluation/single_test_query.txt for consistency
-        query_file = Path(__file__).parent / "single_test_query.txt"
+        # TODO: Change to pre_user_query_evaluate.txt for full evaluation
+        query_file = Path(__file__).parent / "pre_user_query_evaluate.txt"
     
     if not os.path.exists(query_file):
         print(f"❌ Query file not found: {query_file}")
