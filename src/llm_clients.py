@@ -273,6 +273,116 @@ class llm_Med42_70BClient:
                 'latency': latency  # Include latency even for error cases
             }
 
+    def analyze_medical_query_dual_task(
+        self, 
+        user_query: str, 
+        max_tokens: int = 100, 
+        timeout: Optional[float] = None
+    ) -> Dict[str, Union[str, float]]:
+        """
+        Analyze medical query with dual task processing (Level 2+4 Combined).
+        
+        Performs both condition extraction and medical query validation in single LLM call.
+        Specifically designed for user_prompt.py Level 2+4 combined processing.
+        
+        Args:
+            user_query: Original user medical query (not wrapped prompt)
+            max_tokens: Maximum tokens to generate
+            timeout: Specific API call timeout
+        
+        Returns:
+            Dict containing dual task results with structured format
+        """
+        import time
+        
+        # Start timing
+        start_time = time.time()
+        
+        try:
+            self.logger.info(f"Calling Medical LLM (Dual Task) with query: {user_query}")
+            
+            # Prepare chat completion request with dual task system prompt
+            response = self.client.chat.completions.create(
+                model="m42-health/Llama3-Med42-70B",
+                messages=[
+                    {
+                        "role": "system", 
+                        "content": """Medical Query Analysis - Dual Task Processing:
+
+1. Extract primary medical condition (if specific condition identifiable)
+2. Determine if this is a medical-related query
+
+RESPONSE FORMAT:
+MEDICAL: YES/NO
+CONDITION: [specific condition name or "NONE"]
+CONFIDENCE: [0.1-1.0]
+
+EXAMPLES:
+- "chest pain and shortness of breath" → MEDICAL: YES, CONDITION: Acute Coronary Syndrome, CONFIDENCE: 0.9
+- "how to cook pasta safely" → MEDICAL: NO, CONDITION: NONE, CONFIDENCE: 0.95
+- "persistent headache treatment options" → MEDICAL: YES, CONDITION: Headache Disorder, CONFIDENCE: 0.8
+- "feeling unwell lately" → MEDICAL: YES, CONDITION: NONE, CONFIDENCE: 0.6
+
+Return ONLY the specified format."""
+                    },
+                    {
+                        "role": "user", 
+                        "content": user_query
+                    }
+                ],
+                max_tokens=max_tokens,
+                temperature=0  # Ensure deterministic responses
+            )
+            
+            # Calculate latency
+            end_time = time.time()
+            latency = end_time - start_time
+            
+            # Extract the response text
+            response_text = response.choices[0].message.content or ""
+            
+            # Log raw response and latency
+            self.logger.info(f"Raw LLM Dual Task Response: {response_text}")
+            self.logger.info(f"Dual Task Query Latency: {latency:.4f} seconds")
+            
+            # Detect abnormal response
+            if self._is_abnormal_response(response_text):
+                self.logger.error(f"❌ Abnormal LLM dual task response detected: {response_text[:50]}...")
+                return {
+                    'extracted_condition': '',
+                    'confidence': '0',
+                    'error': 'Abnormal LLM dual task response detected',
+                    'raw_response': response_text,
+                    'latency': latency
+                }
+            
+            # Return structured response for Level 2+4 processing
+            return {
+                'extracted_condition': response_text,  # For compatibility with existing logging
+                'confidence': '0.8',                   # Default confidence for successful dual task
+                'raw_response': response_text,         # Contains MEDICAL/CONDITION/CONFIDENCE format
+                'latency': latency,
+                'dual_task_mode': True                 # Flag to indicate dual task processing
+            }
+        
+        except Exception as e:
+            # Calculate latency even for failed requests
+            end_time = time.time()
+            latency = end_time - start_time
+            
+            self.logger.error(f"Medical LLM dual task query error: {str(e)}")
+            self.logger.error(f"Error Type: {type(e).__name__}")
+            self.logger.error(f"Dual task query that caused error: {user_query}")
+            
+            return {
+                'extracted_condition': '',
+                'confidence': '0',
+                'error': str(e),
+                'raw_response': '',
+                'latency': latency,
+                'dual_task_mode': True
+            }
+
     def extract_medical_keywords_for_customization(
         self, 
         query: str, 
