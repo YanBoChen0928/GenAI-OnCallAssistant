@@ -352,11 +352,17 @@ class LLMJudgeChartGenerator:
                 row_data = []
                 for category in categories:
                     cat_key = category.lower()
-                    if cat_key in category_results and category_results[cat_key]['query_count'] > 0:
+                    
+                    # Get system-specific results for this category
+                    system_results = stats['detailed_system_results'][system]['results']
+                    category_results_for_system = [r for r in system_results if r.get('category') == cat_key]
+                    
+                    if category_results_for_system:
                         if metric == 'Actionability':
-                            value = category_results[cat_key]['average_actionability']
-                        else:
-                            value = category_results[cat_key]['average_evidence']
+                            scores = [r['actionability_score'] for r in category_results_for_system]
+                        else:  # Evidence
+                            scores = [r['evidence_score'] for r in category_results_for_system]
+                        value = sum(scores) / len(scores)  # Calculate average for this system and category
                     else:
                         value = 0.5  # Placeholder for missing data
                     row_data.append(value)
