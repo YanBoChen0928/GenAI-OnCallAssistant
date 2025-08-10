@@ -448,8 +448,8 @@ if __name__ == "__main__":
         query_file = sys.argv[1]
     else:
         # Default to evaluation/single_test_query.txt for consistency
-        # TODO: Change to pre_user_query_evaluate.txt for full evaluation
-        query_file = Path(__file__).parent / "pre_user_query_evaluate.txt"
+        # TODO: Change to pre_user_query_evaluate.txt for full evaluation, user_query.txt for formal evaluation
+        query_file = Path(__file__).parent / "user_query.txt"
     
     if not os.path.exists(query_file):
         print(f"❌ Query file not found: {query_file}")

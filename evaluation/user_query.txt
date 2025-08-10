@@ -1,34 +1,14 @@
-以下是九個以「我在問你」口吻設計的快速諮詢 prompts，分為三類，每類三題：
 
 
-1.
-Diagnosis-Focused 
-60-year-old patient with hypertension history, sudden chest pain. What are possible causes and how to assess?
+1.diagnosis: I have a 68-year-old man with atrial fibrillation presenting with sudden slurred speech and right-sided weakness. what are the possible diagnoses, and how would you evaluate them?
+2.diagnosis: A 40-year-old woman reports fever, urinary frequency, and dysuria. what differential diagnoses should I consider, and which tests would you order?
+3.diagnosis: A 50-year-old patient has progressive dyspnea on exertion and orthopnea over two weeks. what are the likely causes, and what diagnostic steps should I take?
 
-2.
-Treatment-Focused
-Suspected acute ischemic stroke. Tell me the next steps to take
+4.treatment: ECG shows a suspected acute STEMI. what immediate interventions should I initiate in the next five minutes?
+5.treatment: I have a patient diagnosed with bacterial meningitis. What empiric antibiotic regimen and supportive measures should I implement?
+6.treatment: A patient is in septic shock with BP 80/50 mmHg and HR 120 bpm—what fluid resuscitation and vasopressor strategy would you recommend?
 
-3.
-20 y/f , porphyria, sudden seizure. What are possible causes and complete management workflow?
 
-(測試時可以先用這三題看結果，如果要debug、調整完，再用下面的)
----
-
-### 一、Diagnosis-Focused（診斷為主）
-
-1. I have a 68-year-old man with atrial fibrillation presenting with sudden slurred speech and right-sided weakness. what are the possible diagnoses, and how would you evaluate them?
-2. A 40-year-old woman reports fever, urinary frequency, and dysuria. what differential diagnoses should I consider, and which tests would you order?
-3. A 50-year-old patient has progressive dyspnea on exertion and orthopnea over two weeks. what are the likely causes, and what diagnostic steps should I take?
-
-### 二、Treatment-Focused（治療為主）
-
-4. ECG shows a suspected acute STEMI. what immediate interventions should I initiate in the next five minutes?
-5. I have a patient diagnosed with bacterial meningitis. What empiric antibiotic regimen and supportive measures should I implement?
-6. A patient is in septic shock with BP 80/50 mmHg and HR 120 bpm—what fluid resuscitation and vasopressor strategy would you recommend?
-
-### 三、Mixed（診斷＋治療綜合）
-
-7. A 75-year-old diabetic presents with a non-healing foot ulcer and fever—what differential for osteomyelitis, diagnostic workup, and management plan do you suggest?
-8. A 60-year-old COPD patient has worsening dyspnea and hypercapnia on ABG. How would you confirm the diagnosis, and what is your stepwise treatment approach?
-9. A 28-year-old woman is experiencing postpartum hemorrhage. what are the possible causes, what immediate resuscitation steps should I take, and how would you proceed with definitive management?
+7.mixed/complicated: A 75-year-old diabetic presents with a non-healing foot ulcer and fever—what differential for osteomyelitis, diagnostic workup, and management plan do you suggest?
+8.mixed/complicated: A 60-year-old COPD patient has worsening dyspnea and hypercapnia on ABG. How would you confirm the diagnosis, and what is your stepwise treatment approach?
+9.mixed/complicated: A 28-year-old woman is experiencing postpartum hemorrhage. what are the possible causes, what immediate resuscitation steps should I take, and how would you proceed with definitive management?
