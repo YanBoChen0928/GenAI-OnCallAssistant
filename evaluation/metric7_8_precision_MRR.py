@@ -76,32 +76,76 @@ class PrecisionMRRAnalyzer:
     
     def _is_complex_query(self, query: str, processed_results: List[Dict]) -> bool:
         """
-        Determine query complexity based on actual matched emergency keywords
+        IMPROVED: Determine query complexity using multiple indicators
+        (TEMPORARY FIX - see evaluation/TEMP_MRR_complexity_fix.md for details)
         
         Args:
             query: Original query text
-            processed_results: Retrieval results with matched keywords
+            processed_results: Retrieval results
             
         Returns:
             True if query is complex (should use lenient threshold)
         """
-        # Collect unique emergency keywords actually found in retrieval results
-        unique_emergency_keywords = set()
+        # Strategy 1: Emergency medical keywords analysis
+        emergency_indicators = [
+            'stroke', 'cardiac', 'arrest', 'acute', 'sudden', 'emergency',
+            'chest pain', 'dyspnea', 'seizure', 'unconscious', 'shock',
+            'atrial fibrillation', 'neurological', 'weakness', 'slurred speech',
+            'myocardial infarction', 'heart attack', 'respiratory failure'
+        ]
         
+        query_lower = query.lower()
+        emergency_keyword_count = sum(1 for keyword in emergency_indicators if keyword in query_lower)
+        
+        # Strategy 2: Emergency-type results proportion
+        emergency_results = [r for r in processed_results if r.get('type') == 'emergency']
+        emergency_ratio = len(emergency_results) / len(processed_results) if processed_results else 0
+        
+        # Strategy 3: High relevance score distribution (indicates specific medical condition)
+        relevance_scores = []
         for result in processed_results:
-            if result.get('type') == 'emergency':
-                matched_keywords = result.get('matched', '')
-                if matched_keywords:
-                    keywords = [kw.strip() for kw in matched_keywords.split('|') if kw.strip()]
-                    unique_emergency_keywords.update(keywords)
+            distance = result.get('distance', 1.0)
+            relevance = 1.0 - (distance**2) / 2.0
+            relevance_scores.append(relevance)
         
-        keyword_count = len(unique_emergency_keywords)
+        high_relevance_count = sum(1 for score in relevance_scores if score >= 0.7)
         
-        # Business logic: 4+ different emergency keywords indicate complex case
-        is_complex = keyword_count >= 4
+        # Decision logic (multiple criteria)
+        is_complex = False
+        decision_reasons = []
         
-        print(f"   🧠 Query complexity: {'Complex' if is_complex else 'Simple'} ({keyword_count} emergency keywords)")
-        print(f"   🔑 Found keywords: {', '.join(list(unique_emergency_keywords)[:5])}")
+        if emergency_keyword_count >= 2:
+            is_complex = True
+            decision_reasons.append(f"{emergency_keyword_count} emergency keywords")
+            
+        if emergency_ratio >= 0.5:  # 50%+ emergency results
+            is_complex = True
+            decision_reasons.append(f"{emergency_ratio:.1%} emergency results")
+            
+        if high_relevance_count >= 3:  # Multiple high-relevance matches
+            is_complex = True  
+            decision_reasons.append(f"{high_relevance_count} high-relevance results")
+        
+        # Fallback: Original matched keywords logic (if available)
+        if not is_complex:
+            unique_emergency_keywords = set()
+            for result in processed_results:
+                if result.get('type') == 'emergency':
+                    matched_keywords = result.get('matched', '')
+                    if matched_keywords:
+                        keywords = [kw.strip() for kw in matched_keywords.split('|') if kw.strip()]
+                        unique_emergency_keywords.update(keywords)
+            
+            if len(unique_emergency_keywords) >= 4:
+                is_complex = True
+                decision_reasons.append(f"{len(unique_emergency_keywords)} matched emergency keywords")
+        
+        # Logging
+        complexity_label = 'Complex' if is_complex else 'Simple'
+        reasons_str = '; '.join(decision_reasons) if decision_reasons else 'insufficient indicators'
+        
+        print(f"   🧠 Query complexity: {complexity_label} ({reasons_str})")
+        print(f"   📊 Analysis: {emergency_keyword_count} emerg keywords, {emergency_ratio:.1%} emerg results, {high_relevance_count} high-rel")
         
         return is_complex
     

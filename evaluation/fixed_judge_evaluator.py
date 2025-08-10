@@ -314,9 +314,39 @@ class FixedLLMJudgeEvaluator:
                     "avg_evidence": 0.0
                 }
         
+        # Calculate category statistics
+        category_stats = {}
+        categories = list(set(r.get('category', 'unknown') for r in successful_results))
+        
+        for category in categories:
+            category_results = [r for r in successful_results if r.get('category') == category]
+            if category_results:
+                actionability_scores = [r['actionability_score'] for r in category_results]
+                evidence_scores = [r['evidence_score'] for r in category_results]
+                
+                category_stats[category] = {
+                    "average_actionability": sum(actionability_scores) / len(actionability_scores),
+                    "average_evidence": sum(evidence_scores) / len(evidence_scores),
+                    "query_count": len(category_results),
+                    "actionability_target_met": (sum(actionability_scores) / len(actionability_scores)) >= 0.7,
+                    "evidence_target_met": (sum(evidence_scores) / len(evidence_scores)) >= 0.75,
+                    "individual_actionability_scores": actionability_scores,
+                    "individual_evidence_scores": evidence_scores
+                }
+            else:
+                category_stats[category] = {
+                    "average_actionability": 0.0,
+                    "average_evidence": 0.0,
+                    "query_count": 0,
+                    "actionability_target_met": False,
+                    "evidence_target_met": False,
+                    "individual_actionability_scores": [],
+                    "individual_evidence_scores": []
+                }
+
         # Save results
         results_data = {
-            "category_results": {},  # Would need category analysis
+            "category_results": category_stats,  # Now includes proper category analysis
             "overall_results": overall_stats,
             "timestamp": datetime.now().isoformat(),
             "comparison_metadata": {
