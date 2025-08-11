@@ -66,3 +66,4 @@ htmlcov/
 .coverage.*
 coverage.xml
 *.cover
+dataset/
