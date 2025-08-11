@@ -55,13 +55,11 @@ class BasicRetrievalSystem:
             self.emergency_index = AnnoyIndex(self.embedding_dim, 'angular')
             self.treatment_index = AnnoyIndex(self.embedding_dim, 'angular')
             
-            # Load data
-            current_file = Path(__file__)
-            project_root = current_file.parent.parent  # from src to root
-            base_path = project_root / "models"
-            self._load_chunks(base_path)
-            self._load_embeddings(base_path)
-            self._build_or_load_indices(base_path)
+            # Load data using cloud loader
+            from cloud_loader import cloud_loader
+            self._load_chunks_from_cloud()
+            self._load_embeddings_from_cloud()
+            self._build_or_load_indices_from_cloud()
             
             logger.info("Retrieval system initialized successfully")
             
@@ -69,6 +67,67 @@ class BasicRetrievalSystem:
             logger.error(f"Failed to initialize retrieval system: {e}")
             raise
             
+    def _load_chunks_from_cloud(self) -> None:
+        """Load chunk data from cloud or local files"""
+        try:
+            from cloud_loader import cloud_loader
+            
+            # Load emergency chunks
+            emergency_chunks_path = cloud_loader.get_model_file_path("models/embeddings/emergency_chunks.json")
+            with open(emergency_chunks_path, 'r', encoding='utf-8') as f:
+                emergency_data = json.load(f)
+                self.emergency_chunks = {i: chunk for i, chunk in enumerate(emergency_data)}
+            
+            # Load treatment chunks  
+            treatment_chunks_path = cloud_loader.get_model_file_path("models/embeddings/treatment_chunks.json")
+            with open(treatment_chunks_path, 'r', encoding='utf-8') as f:
+                treatment_data = json.load(f)
+                self.treatment_chunks = {i: chunk for i, chunk in enumerate(treatment_data)}
+                
+            logger.info(f"Loaded {len(self.emergency_chunks)} emergency and {len(self.treatment_chunks)} treatment chunks")
+            
+        except Exception as e:
+            logger.error(f"Failed to load chunks: {e}")
+            raise
+    
+    def _load_embeddings_from_cloud(self) -> None:
+        """Load embeddings from cloud or local files"""
+        try:
+            from cloud_loader import cloud_loader
+            
+            # Load emergency embeddings
+            emergency_embeddings_path = cloud_loader.get_model_file_path("models/embeddings/emergency_embeddings.npy")
+            self.emergency_embeddings = np.load(emergency_embeddings_path)
+            
+            # Load treatment embeddings
+            treatment_embeddings_path = cloud_loader.get_model_file_path("models/embeddings/treatment_embeddings.npy")
+            self.treatment_embeddings = np.load(treatment_embeddings_path)
+            
+            logger.info("Embeddings loaded successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to load embeddings: {e}")
+            raise
+    
+    def _build_or_load_indices_from_cloud(self) -> None:
+        """Build or load Annoy indices from cloud or local files"""
+        try:
+            from cloud_loader import cloud_loader
+            
+            # Load emergency index
+            emergency_index_path = cloud_loader.get_model_file_path("models/indices/annoy/emergency.ann")
+            self.emergency_index.load(emergency_index_path)
+            
+            # Load treatment index
+            treatment_index_path = cloud_loader.get_model_file_path("models/indices/annoy/treatment.ann")
+            self.treatment_index.load(treatment_index_path)
+            
+            logger.info("Annoy indices loaded successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to load indices: {e}")
+            raise
+
     def _load_chunks(self, base_path: Path) -> None:
         """Load chunk data from JSON files"""
         try:
