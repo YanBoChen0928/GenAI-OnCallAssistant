@@ -221,8 +221,24 @@ class OnCallAIInterface:
                     
                     processing_steps.append(f"   ⏱️ Generation time: {gen_time:.3f}s")
                     
-                    # Format guidelines display
+                    # Format guidelines display with similarity scores for evaluation
+                    # Extract top similarity scores for evaluation metrics
+                    similarity_scores = []
+                    for chunk in customization_results[:10]:  # Limit to top 10 for efficiency
+                        if 'score' in chunk:
+                            similarity_scores.append(chunk['score'])
+                        elif 'similarity' in chunk:
+                            similarity_scores.append(chunk['similarity'])
+                    
+                    # Create structured display with scores for evaluation
+                    import json
+                    guidelines_data = {
+                        "count": len(customization_results),
+                        "similarity_scores": similarity_scores
+                    }
                     guidelines_display = f"Hospital Guidelines Found: {len(customization_results)}"
+                    # Add JSON data for parser to extract
+                    guidelines_display += f"\n<!--EVAL_DATA:{json.dumps(guidelines_data)}-->"
                     
                     # Conditional return based on DEBUG_MODE
                     if DEBUG_MODE:
@@ -272,10 +288,39 @@ class OnCallAIInterface:
                 processed_results = retrieval_results.get('processed_results', [])
             
             # Format retrieved guidelines for display - conditional based on debug mode
-            if DEBUG_MODE:
-                guidelines_display = self._format_guidelines_display(processed_results)
+            # Special handling for Hospital Only mode with customization results
+            if retrieval_mode == "Hospital Only" and customization_results and not processed_results:
+                # Extract top similarity scores for evaluation metrics
+                similarity_scores = []
+                for chunk in customization_results[:10]:  # Limit to top 10 for efficiency
+                    if 'score' in chunk:
+                        similarity_scores.append(chunk['score'])
+                    elif 'similarity' in chunk:
+                        similarity_scores.append(chunk['similarity'])
+                
+                # Create structured display with scores for evaluation
+                import json
+                guidelines_data = {
+                    "count": len(customization_results),
+                    "similarity_scores": similarity_scores
+                }
+                guidelines_display = f"Hospital Guidelines Found: {len(customization_results)}"
+                # Add JSON data for parser to extract
+                guidelines_display += f"\n<!--EVAL_DATA:{json.dumps(guidelines_data)}-->"
+                
+                if DEBUG_MODE:
+                    # Add debug info about customization results
+                    guidelines_display += f"\n\nDebug - Customization Results:\n"
+                    for i, result in enumerate(customization_results[:3], 1):
+                        score = result.get('score', result.get('similarity', 0))
+                        preview = result.get('content', '')[:100] + "..." if len(result.get('content', '')) > 100 else result.get('content', '')
+                        guidelines_display += f"{i}. Score: {score:.3f} | {preview}\n"
             else:
-                guidelines_display = self._format_user_friendly_sources(processed_results)
+                # Standard formatting for general guidelines or combined mode
+                if DEBUG_MODE:
+                    guidelines_display = self._format_guidelines_display(processed_results)
+                else:
+                    guidelines_display = self._format_user_friendly_sources(processed_results)
             
             # Hospital customization already done in Step 1.5
             

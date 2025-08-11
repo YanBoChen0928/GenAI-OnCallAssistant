@@ -21,7 +21,9 @@ from pathlib import Path
 from datetime import datetime
 
 # Add modules to path
-sys.path.append(str(Path(__file__).parent / "modules"))
+modules_path = str(Path(__file__).parent / "modules")
+if modules_path not in sys.path:
+    sys.path.insert(0, modules_path)
 
 from direct_llm_evaluator import DirectLLMEvaluator
 from rag_vs_direct_comparator import RAGvsDirectComparator
