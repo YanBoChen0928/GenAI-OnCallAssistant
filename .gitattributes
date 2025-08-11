@@ -1,0 +1,4 @@
+*.npy filter=lfs diff=lfs merge=lfs -text
+*.ann filter=lfs diff=lfs merge=lfs -text
+models/**/*.json filter=lfs diff=lfs merge=lfs -text
+customization/**/*.json filter=lfs diff=lfs merge=lfs -text

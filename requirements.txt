@@ -1,3 +1,7 @@
+# OnCall.ai Medical Emergency Assistant - Dependencies
+# Requires Python 3.11+ for optimal performance and compatibility
+# Developed and tested on Python 3.11.9
+
 accelerate==1.9.0
 aiofiles==24.1.0
 aiohappyeyeballs==2.6.1

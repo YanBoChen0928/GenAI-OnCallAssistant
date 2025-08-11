@@ -1,0 +1,43 @@
+# OnCall.ai Medical Emergency Assistant - Optimized Dependencies
+# Requires Python 3.11+ for optimal performance and compatibility
+# Version ranges locked to prevent breaking changes during deployment
+
+# Core ML and AI dependencies - locked to major versions
+gradio>=5.38,<6.0
+huggingface-hub>=0.33,<0.35
+transformers>=4.53,<4.55
+torch>=2.7,<2.8
+sentence-transformers>=3.0,<3.1
+
+# Retrieval and indexing
+annoy>=1.17,<1.18
+datasets>=4.0,<4.1
+
+# Web server and API
+fastapi>=0.116,<0.117
+uvicorn>=0.35,<0.36
+
+# Data processing
+pandas>=2.2,<2.3
+numpy>=2.2,<2.3
+scikit-learn>=1.7,<1.8
+
+# File processing
+pypdf>=5.8,<6.0
+python-dotenv>=1.1,<1.2
+
+# Image processing (for EasyOCR)
+opencv-python-headless>=4.12,<5.0
+easyocr>=1.7,<1.8
+pillow>=11.0,<12.0
+
+# Utilities
+requests>=2.32,<2.33
+tqdm>=4.67,<4.68
+pydantic>=2.11,<2.12
+packaging>=25.0,<26.0
+
+# Additional dependencies for your specific features
+llama-index-core>=0.12.50,<0.13
+llama-index-embeddings-huggingface>=0.5,<0.6
+llama-index-llms-huggingface>=0.5,<0.6

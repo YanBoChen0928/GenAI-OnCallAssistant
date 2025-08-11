@@ -714,14 +714,19 @@ def main():
         # Create interface
         interface = create_oncall_interface()
         
-        # Launch configuration
+        # Launch configuration (Spaces-compatible)
         launch_config = {
-            "server_name": "0.0.0.0",  # Allow external connections
-            "server_port": 7860,       # Standard Gradio port
             "share": False,            # Set to True for public links
             "debug": DEBUG_MODE,
             "show_error": DEBUG_MODE
         }
+        
+        # Only set server config for local development
+        if not os.getenv('SPACE_ID'):  # Not running in Hugging Face Spaces
+            launch_config.update({
+                "server_name": "0.0.0.0",  # Allow external connections
+                "server_port": 7860,       # Standard Gradio port
+            })
         
         print("🚀 Launching OnCall.ai interface...")
         print(f"🌐 Interface will be available at: http://localhost:7860")
