@@ -87,14 +87,17 @@ def retrieve_document_chunks(query: str, top_k: int = 5, llm_client=None) -> Lis
     # Load model and existing embeddings
     embedding_model = load_biomedbert_model()
     
-    # Load from processing folder
-    processing_path = Path(__file__).parent / "processing"
+    # Load processing data from cloud or local with preloading
+    from cloud_config import customization_loader
+    
+    # Preload all processing files and get directory paths
+    embeddings_dir, indices_dir = customization_loader.preload_all_processing_files()
     
     # Load the saved system with ANNOY indices
     document_index, tag_embeddings, doc_tag_mapping, chunk_embeddings, annoy_manager = \
         load_document_system_with_annoy(
-            input_dir=str(processing_path / "embeddings"),
-            annoy_dir=str(processing_path / "indices")
+            input_dir=embeddings_dir,
+            annoy_dir=indices_dir
         )
     
     if annoy_manager is None:
